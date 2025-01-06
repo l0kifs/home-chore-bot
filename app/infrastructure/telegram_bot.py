@@ -1,8 +1,8 @@
-# Replace 'YOUR_BOT_TOKEN' with your actual bot token
 import datetime
 import logging
 
 from telegram import Update
+from telegram.ext import ContextTypes, ApplicationBuilder, CommandHandler
 from app.domain.models import Chore, Frequency, Person
 from app.domain.services import ChoreDistributionService
 from app.use_cases.assign_chores import AssignChoresUseCase
