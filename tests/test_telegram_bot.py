@@ -1,9 +1,9 @@
 import datetime
 from unittest.mock import AsyncMock
-from app.domain.models import Chore, Person, Frequency
-from app.domain.services import ChoreDistributionService
-from app.use_cases.assign_chores import AssignChoresUseCase
-from app.infrastructure.telegram_bot import notify_chores
+from domain.models import Chore, Person, Frequency
+from domain.services import ChoreDistributionService
+from use_cases.assign_chores import AssignChoresUseCase
+from infrastructure.telegram_bot import notify_chores
 
 
 async def test_notify_chores(mocker):

@@ -49,7 +49,7 @@ def test_fairness_of_task_distribution():
     chores = [
         Chore(name="Wash Dishes", frequency=Frequency.DAILY, complexity=1),
         Chore(name="Do Laundry", frequency=Frequency.WEEKLY, complexity=3),
-        Chore(name="Mop Floor", frequency=Frequency.EVERY_5_DAYS, complexity=2),
+        Chore(name="Mop Floor", frequency=Frequency.EVERY_3_DAYS, complexity=2),
         Chore(name="Cook Dinner", frequency=Frequency.DAILY, complexity=4),
     ]
     reference_date = datetime.date(2023, 1, 7)  # Day 7 of the year

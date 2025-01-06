@@ -1,7 +1,7 @@
 import datetime
 from typing import Dict, List
 
-from app.domain.models import Chore, Person
+from domain.models import Chore, Person
 
 
 class ChoreDistributionService:

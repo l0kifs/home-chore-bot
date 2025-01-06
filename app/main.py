@@ -1,11 +1,5 @@
-import logging
-import datetime
-from typing import List, Dict
-from enum import Enum
+from infrastructure.telegram_bot import main
 
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
+
+if __name__ == "__main__":
+    main()

@@ -3,8 +3,10 @@ from enum import Enum
 
 class Frequency(Enum):
     DAILY = 1
+    EVERY_3_DAYS = 3
     WEEKLY = 7
-    EVERY_5_DAYS = 5
+    MONTHLY = 30
+    EVERY_2_MONTHS = 60
     # You can add more frequencies as needed, e.g. MONTHLY = 30, etc.
 
 class Chore:

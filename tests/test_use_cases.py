@@ -1,7 +1,7 @@
 import datetime
-from app.domain.models import Chore, Person, Frequency
-from app.domain.services import ChoreDistributionService
-from app.use_cases.assign_chores import AssignChoresUseCase
+from domain.models import Chore, Person, Frequency
+from domain.services import ChoreDistributionService
+from use_cases.assign_chores import AssignChoresUseCase
 
 
 def test_assign_chores_use_case():

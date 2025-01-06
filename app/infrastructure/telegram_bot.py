@@ -2,64 +2,80 @@ import datetime
 import logging
 
 from telegram import Update
-from telegram.ext import ContextTypes, ApplicationBuilder, CommandHandler
-from app.domain.models import Chore, Frequency, Person
-from app.domain.services import ChoreDistributionService
-from app.use_cases.assign_chores import AssignChoresUseCase
+from telegram.ext import ContextTypes, Application, CommandHandler
+from config.env_vars import EnvVars
+from domain.models import Chore, Frequency, Person
+from domain.services import ChoreDistributionService
+from use_cases.assign_chores import AssignChoresUseCase
 
 
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
+PERSON_1 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[0], name="Serj")
+PERSON_2 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[1], name="Vika")
 
-# Hardcode two sample people for demonstration (use actual Telegram IDs).
-# Example: Person 1 => telegram_id=123456, Person 2 => telegram_id=234567
-PERSON_1 = Person(telegram_id=111111111, name="Alice")
-PERSON_2 = Person(telegram_id=222222222, name="Bob")
 
-# Define your chores here (in real scenario, load from DB or config)
 ALL_CHORES = [
-    Chore(name="Wash Dishes", frequency=Frequency.DAILY, complexity=1),
-    Chore(name="Collect Trash", frequency=Frequency.DAILY, complexity=1),
-    Chore(name="Mop Floor", frequency=Frequency.EVERY_5_DAYS, complexity=2),
-    Chore(name="Do Laundry", frequency=Frequency.WEEKLY, complexity=3),
+    Chore(name="Вынести мусор", frequency=Frequency.EVERY_3_DAYS, complexity=3),
+    Chore(name="Почистить зубы кошкам", frequency=Frequency.DAILY, complexity=2),
+    Chore(name="Убрать лотки", frequency=Frequency.DAILY, complexity=3),
+    Chore(name="Сменить постельное белье", frequency=Frequency.WEEKLY, complexity=4),
+    Chore(name="Помыть полы", frequency=Frequency.WEEKLY, complexity=5),
+    Chore(name="Помыть стекла", frequency=Frequency.EVERY_2_MONTHS, complexity=5),
+    Chore(name="Помыть холодильник", frequency=Frequency.MONTHLY, complexity=5),
+    Chore(name="Полить растения", frequency=Frequency.WEEKLY, complexity=2),
+    Chore(name="Помыть ванну", frequency=Frequency.WEEKLY, complexity=3),
+    Chore(name="Помыть унитаз", frequency=Frequency.WEEKLY, complexity=2),
+    Chore(name="Протереть поверхности на кухне", frequency=Frequency.EVERY_3_DAYS, complexity=3),
+    Chore(name="Постирать вещи", frequency=Frequency.EVERY_3_DAYS, complexity=3),
+    Chore(name="Собрать мусор", frequency=Frequency.DAILY, complexity=2),
+    Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=2),
 ]
 
-# Instantiate the needed classes
+
 distribution_service = ChoreDistributionService()
 assign_chores_use_case = AssignChoresUseCase(distribution_service)
+
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handler for the /start command. 
     Just a greeting message.
     """
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+
     await update.message.reply_text(
-        text="Hi! I am your Chore Bot. I'll let you know which chores you have to do today."
+        text="Привет! Я бот Антисрач. Расскажу, что тебе делать, чтобы не зарасти говной."
     )
+
+    print(f"User ID: {user_id}, Username: {username}")
+
 
 async def notify_chores(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     This job runs daily (or whenever you schedule it) 
     to notify each person of their assigned chores for today.
     """
-    # We use today's date to figure out chores
     reference_date = datetime.date.today()
     persons = [PERSON_1, PERSON_2]
 
-    # Distribute chores
-    assignment_map = assign_chores_use_case.execute(ALL_CHORES, persons, reference_date)
+    assignment_map = assign_chores_use_case.execute(
+        ALL_CHORES, 
+        persons, 
+        reference_date
+    )
 
     # Send Telegram messages to each user
     for person, chores_list in assignment_map.items():
         if chores_list:
             chores_text = "\n".join([f"- {chore.name}" for chore in chores_list])
             message_text = (
-                f"Good morning, {person.name}!\n"
-                f"Here are your chores for {reference_date}:\n{chores_text}"
+                f"Доброе утро, {person.name}!\n"
+                f"Вот твой список дел на {reference_date}:\n{chores_text}"
             )
         else:
             message_text = (
-                f"Good morning, {person.name}!\n"
-                f"You have no chores for {reference_date}.\nEnjoy your free time!"
+                f"Доброе утро, {person.name}!\n"
+                f"Сегодня у тебя нет дел {reference_date}.\nРасслабляйся!"
             )
 
         try:
@@ -73,33 +89,26 @@ def main() -> None:
     Entrypoint: 
     1. Build the telegram application
     2. Register handlers
-    3. (Optionally) schedule daily job to notify chores
+    3. Schedule daily job to notify chores
     4. Start polling
     """
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
     )
 
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application = Application.builder().token(
+        EnvVars().TELEGRAM_BOT_TOKEN
+    ).build()
 
-    # Register a /start command handler
     start_handler = CommandHandler("start", start_command)
+
     application.add_handler(start_handler)
 
-    # Here you could use APScheduler or application.job_queue for daily tasks
-    # Example using JobQueue from python-telegram-bot:
-    # This schedules notify_chores to run daily at 08:00
-    # (Adjust for your timezone or use UTC appropriately)
     job_queue = application.job_queue
     job_queue.run_daily(
         notify_chores,
-        time=datetime.time(hour=8, minute=0, second=0),
+        time=datetime.time(hour=2, minute=0, second=0, tzinfo=datetime.timezone.utc),
         name="daily_chore_notification"
     )
 
-    # Start the bot
     application.run_polling()
-
-
-if __name__ == "__main__":
-    main()
