@@ -9,26 +9,25 @@ from domain.services import ChoreDistributionService
 from use_cases.assign_chores import AssignChoresUseCase
 
 
-PERSON_1 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[0], name="Serj")
-PERSON_2 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[1], name="Vika")
+def get_person_by_telegram_id(session, telegram_id: int) -> Person:
+    return session.query(Person).filter_by(telegram_id=telegram_id).first()
 
-
-ALL_CHORES = [
-    Chore(name="Вынести мусор", frequency=Frequency.EVERY_3_DAYS, complexity=3),
-    Chore(name="Почистить зубы кошкам", frequency=Frequency.DAILY, complexity=2),
-    Chore(name="Убрать лотки", frequency=Frequency.DAILY, complexity=3),
-    Chore(name="Сменить постельное белье", frequency=Frequency.WEEKLY, complexity=4),
-    Chore(name="Помыть полы", frequency=Frequency.WEEKLY, complexity=5),
-    Chore(name="Помыть стекла", frequency=Frequency.EVERY_2_MONTHS, complexity=5),
-    Chore(name="Помыть холодильник", frequency=Frequency.MONTHLY, complexity=5),
-    Chore(name="Полить растения", frequency=Frequency.WEEKLY, complexity=2),
-    Chore(name="Помыть ванну", frequency=Frequency.WEEKLY, complexity=3),
-    Chore(name="Помыть унитаз", frequency=Frequency.WEEKLY, complexity=2),
-    Chore(name="Протереть поверхности на кухне", frequency=Frequency.EVERY_3_DAYS, complexity=3),
-    Chore(name="Постирать вещи", frequency=Frequency.EVERY_3_DAYS, complexity=3),
-    Chore(name="Собрать мусор", frequency=Frequency.DAILY, complexity=2),
-    Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=2),
-]
+# ALL_CHORES = [
+#     Chore(name="Вынести мусор", frequency=Frequency.EVERY_3_DAYS, complexity=3),
+#     Chore(name="Почистить зубы кошкам", frequency=Frequency.DAILY, complexity=2),
+#     Chore(name="Убрать лотки", frequency=Frequency.DAILY, complexity=3),
+#     Chore(name="Сменить постельное белье", frequency=Frequency.WEEKLY, complexity=4),
+#     Chore(name="Помыть полы", frequency=Frequency.WEEKLY, complexity=5),
+#     Chore(name="Помыть стекла", frequency=Frequency.EVERY_2_MONTHS, complexity=5),
+#     Chore(name="Помыть холодильник", frequency=Frequency.MONTHLY, complexity=5),
+#     Chore(name="Полить растения", frequency=Frequency.WEEKLY, complexity=2),
+#     Chore(name="Помыть ванну", frequency=Frequency.WEEKLY, complexity=3),
+#     Chore(name="Помыть унитаз", frequency=Frequency.WEEKLY, complexity=2),
+#     Chore(name="Протереть поверхности на кухне", frequency=Frequency.EVERY_3_DAYS, complexity=3),
+#     Chore(name="Постирать вещи", frequency=Frequency.EVERY_3_DAYS, complexity=3),
+#     Chore(name="Собрать мусор", frequency=Frequency.DAILY, complexity=2),
+#     Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=2),
+# ]
 
 
 distribution_service = ChoreDistributionService()
