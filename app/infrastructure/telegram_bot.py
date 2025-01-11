@@ -2,32 +2,17 @@ import datetime
 import logging
 
 from telegram import Update
-from telegram.ext import ContextTypes, Application, CommandHandler
+from telegram.ext import Updater, ContextTypes, Application, CommandHandler, MessageHandler, ConversationHandler, CallbackContext
 from config.env_vars import EnvVars
-from domain.models import Chore, Frequency, Person
+from telegram.ext import filters
+from domain.models import Chore, Person
 from domain.services import ChoreDistributionService
 from use_cases.assign_chores import AssignChoresUseCase
+from app.database import SessionManager
 
 
 def get_person_by_telegram_id(session, telegram_id: int) -> Person:
     return session.query(Person).filter_by(telegram_id=telegram_id).first()
-
-# ALL_CHORES = [
-#     Chore(name="Вынести мусор", frequency=Frequency.EVERY_3_DAYS, complexity=3),
-#     Chore(name="Почистить зубы кошкам", frequency=Frequency.DAILY, complexity=2),
-#     Chore(name="Убрать лотки", frequency=Frequency.DAILY, complexity=3),
-#     Chore(name="Сменить постельное белье", frequency=Frequency.WEEKLY, complexity=4),
-#     Chore(name="Помыть полы", frequency=Frequency.WEEKLY, complexity=5),
-#     Chore(name="Помыть стекла", frequency=Frequency.EVERY_2_MONTHS, complexity=5),
-#     Chore(name="Помыть холодильник", frequency=Frequency.MONTHLY, complexity=5),
-#     Chore(name="Полить растения", frequency=Frequency.WEEKLY, complexity=2),
-#     Chore(name="Помыть ванну", frequency=Frequency.WEEKLY, complexity=3),
-#     Chore(name="Помыть унитаз", frequency=Frequency.WEEKLY, complexity=2),
-#     Chore(name="Протереть поверхности на кухне", frequency=Frequency.EVERY_3_DAYS, complexity=3),
-#     Chore(name="Постирать вещи", frequency=Frequency.EVERY_3_DAYS, complexity=3),
-#     Chore(name="Собрать мусор", frequency=Frequency.DAILY, complexity=2),
-#     Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=2),
-# ]
 
 
 distribution_service = ChoreDistributionService()
@@ -50,20 +35,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def notify_chores(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    This job runs daily (or whenever you schedule it) 
-    to notify each person of their assigned chores for today.
-    """
     reference_date = datetime.date.today()
-    persons = [PERSON_1, PERSON_2]
 
-    assignment_map = assign_chores_use_case.execute(
-        ALL_CHORES, 
-        persons, 
-        reference_date
-    )
+    with SessionManager() as session:
+        persons = session.query(Person).all()
+        chores = session.query(Chore).all()
 
-    # Send Telegram messages to each user
+    assignment_map = assign_chores_use_case.execute(chores, persons, reference_date)
+
     for person, chores_list in assignment_map.items():
         if chores_list:
             chores_text = "\n".join([f"- {chore.name}" for chore in chores_list])
@@ -81,7 +60,80 @@ async def notify_chores(context: ContextTypes.DEFAULT_TYPE) -> None:
             await context.bot.send_message(chat_id=person.telegram_id, text=message_text)
         except Exception as e:
             logging.error(f"Failed to send chores notification to {person.name}: {e}")
+            
+NAME, FREQUENCY, COMPLEXITY = range(3)
 
+def start_chores(update: Update, context: CallbackContext) -> int:
+    """
+    Initiates the chore creation process by asking for the name of the chore.
+    """
+    update.message.reply_text("Please enter the name of the chore:")
+    return NAME
+
+def get_name(update: Update, context: CallbackContext) -> int:
+    """
+    Captures the name of the chore and stores it in context for later use.
+    """
+    context.user_data['chore_name'] = update.message.text
+    update.message.reply_text("Please enter the frequency of the chore (e.g., daily, weekly):")
+    return FREQUENCY
+
+def get_frequency(update: Update, context: CallbackContext) -> int:
+    """
+    Captures the frequency and stores it in context for later use.
+    Validates the input against predefined frequency values.
+    """
+    frequency = update.message.text.lower()
+    valid_frequencies = ['daily', 'weekly', 'monthly']  # Adjust this list as needed
+
+    if frequency not in valid_frequencies:
+        update.message.reply_text("Invalid frequency. Please enter 'daily', 'weekly', or 'monthly':")
+        return FREQUENCY
+
+    context.user_data['chore_frequency'] = frequency
+    update.message.reply_text("Please enter the complexity of the chore (e.g., easy, medium, hard):")
+    return COMPLEXITY
+
+def get_complexity(update: Update, context: CallbackContext) -> int:
+    """
+    Captures the complexity and completes the chore creation process by storing the chore in the database.
+    """
+    complexity = update.message.text.lower()
+    valid_complexities = ['easy', 'medium', 'hard']  # Adjust this list as needed
+
+    if complexity not in valid_complexities:
+        update.message.reply_text("Invalid complexity. Please enter 'easy', 'medium', or 'hard':")
+        return COMPLEXITY
+
+    context.user_data['chore_complexity'] = complexity
+
+    # Store the chore in the database
+    with SessionManager() as session:
+        new_chore = Chore(
+            name=context.user_data['chore_name'],
+            frequency=context.user_data['chore_frequency'],
+            complexity=context.user_data['chore_complexity']
+        )
+        session.add(new_chore)
+        session.commit()
+
+    update.message.reply_text(f"Chore '{new_chore.name}' has been added successfully!")
+    return ConversationHandler.END
+
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text("Chore addition cancelled.")
+    return ConversationHandler.END
+
+# Add handlers to the dispatcher
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler('chores', start_chores)],
+    states={
+        NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+        FREQUENCY: [MessageHandler(filters.Text & ~filters.COMMAND, get_frequency)],
+        COMPLEXITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_complexity)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
 
 def main() -> None:
     """
@@ -111,3 +163,25 @@ def main() -> None:
     )
 
     application.run_polling()
+
+# Initialize bot and dispatcher
+updater = Updater("7762089399:AAHPKdkefJFYo5lJcSiEY0F2KQU4FCRFwtk")
+dispatcher = updater.dispatcher
+
+# Define your conversation handler here
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler('chores', start_chores)],
+    states={
+        NAME: [MessageHandler(Filters.text & ~Filters.command, get_name)],
+        FREQUENCY: [MessageHandler(Filters.text & ~Filters.command, get_frequency)],
+        COMPLEXITY: [MessageHandler(Filters.text & ~Filters.command, get_complexity)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
+
+# Add the conversation handler to the dispatcher
+dispatcher.add_handler(conv_handler)
+
+# Start the bot
+updater.start_polling()
+updater.idle()
