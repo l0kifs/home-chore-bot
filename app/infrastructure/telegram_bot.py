@@ -6,18 +6,11 @@ from telegram.ext import Updater, ContextTypes, Application, CommandHandler, Mes
 from config.env_vars import EnvVars
 from telegram.ext import filters
 from domain.models import Chore, Person
-from domain.services import ChoreDistributionService
-from use_cases.assign_chores import AssignChoresUseCase
-from app.database import SessionManager
+from database import SessionManager
 
 
 def get_person_by_telegram_id(session, telegram_id: int) -> Person:
     return session.query(Person).filter_by(telegram_id=telegram_id).first()
-
-
-distribution_service = ChoreDistributionService()
-assign_chores_use_case = AssignChoresUseCase(distribution_service)
-
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -34,32 +27,29 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     print(f"User ID: {user_id}, Username: {username}")
 
 
-async def notify_chores(context: ContextTypes.DEFAULT_TYPE) -> None:
-    reference_date = datetime.date.today()
+# async def notify_chores(context: ContextTypes.DEFAULT_TYPE) -> None:
+#     reference_date = datetime.date.today()
 
-    with SessionManager() as session:
-        persons = session.query(Person).all()
-        chores = session.query(Chore).all()
+#     with SessionManager() as session:
+#         persons = session.query(Person).all()
+#         chores = session.query(Chore).all()
 
-    assignment_map = assign_chores_use_case.execute(chores, persons, reference_date)
+#         if chores_list:
+#             chores_text = "\n".join([f"- {chore.name}" for chore in chores_list])
+#             message_text = (
+#                 f"Доброе утро, {person.name}!\n"
+#                 f"Вот твой список дел на {reference_date}:\n{chores_text}"
+#             )
+#         else:
+#             message_text = (
+#                 f"Доброе утро, {person.name}!\n"
+#                 f"Сегодня у тебя нет дел {reference_date}.\nРасслабляйся!"
+#             )
 
-    for person, chores_list in assignment_map.items():
-        if chores_list:
-            chores_text = "\n".join([f"- {chore.name}" for chore in chores_list])
-            message_text = (
-                f"Доброе утро, {person.name}!\n"
-                f"Вот твой список дел на {reference_date}:\n{chores_text}"
-            )
-        else:
-            message_text = (
-                f"Доброе утро, {person.name}!\n"
-                f"Сегодня у тебя нет дел {reference_date}.\nРасслабляйся!"
-            )
-
-        try:
-            await context.bot.send_message(chat_id=person.telegram_id, text=message_text)
-        except Exception as e:
-            logging.error(f"Failed to send chores notification to {person.name}: {e}")
+#         try:
+#             await context.bot.send_message(chat_id=person.telegram_id, text=message_text)
+#         except Exception as e:
+#             logging.error(f"Failed to send chores notification to {person.name}: {e}")
             
 NAME, FREQUENCY, COMPLEXITY = range(3)
 
@@ -129,7 +119,7 @@ conv_handler = ConversationHandler(
     entry_points=[CommandHandler('chores', start_chores)],
     states={
         NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-        FREQUENCY: [MessageHandler(filters.Text & ~filters.COMMAND, get_frequency)],
+        FREQUENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_frequency)],
         COMPLEXITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_complexity)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
@@ -151,13 +141,20 @@ def main() -> None:
         EnvVars().TELEGRAM_BOT_TOKEN
     ).build()
 
-    start_handler = CommandHandler("start", start_command)
+    start_handler = CommandHandler("start", start_command) 
 
     application.add_handler(start_handler)
+    
+    # Define your callback function that will be triggered daily
+async def daily_chore_notification(context: CallbackContext):
+    chat_ids = [int(chat_id) for chat_id in context.bot_data.get("TELEGRAM_CHAT_IDS", "").split(",")]
+    message = "Reminder: Time to do your daily chores!"
+    
+    for chat_id in chat_ids:
+        await context.bot.send_message(chat_id=chat_id, text=message)
 
     job_queue = application.job_queue
     job_queue.run_daily(
-        notify_chores,
         time=datetime.time(hour=2, minute=0, second=0, tzinfo=datetime.timezone.utc),
         name="daily_chore_notification"
     )
@@ -165,23 +162,17 @@ def main() -> None:
     application.run_polling()
 
 # Initialize bot and dispatcher
-updater = Updater("7762089399:AAHPKdkefJFYo5lJcSiEY0F2KQU4FCRFwtk")
-dispatcher = updater.dispatcher
-
+application = Application.builder().token("8024964245:AAFmu0MNyXAnhf2N7-WHWUvShIJNJwPhVp0").build()
 # Define your conversation handler here
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('chores', start_chores)],
     states={
-        NAME: [MessageHandler(Filters.text & ~Filters.command, get_name)],
-        FREQUENCY: [MessageHandler(Filters.text & ~Filters.command, get_frequency)],
-        COMPLEXITY: [MessageHandler(Filters.text & ~Filters.command, get_complexity)],
+        NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+        FREQUENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_frequency)],
+        COMPLEXITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_complexity)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
 
 # Add the conversation handler to the dispatcher
-dispatcher.add_handler(conv_handler)
-
-# Start the bot
-updater.start_polling()
-updater.idle()
+application.add_handler(conv_handler)
