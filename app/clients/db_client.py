@@ -37,7 +37,7 @@ class Chore(Base):
     __tablename__ = 'chores'
     id = Column(Integer, primary_key=True)
     tg_group_id = Column(String, nullable=False)
-    description = Column(String, nullable=False)
+    name = Column(String, nullable=False)
     complexity = Column(sqlalchemy.Enum(Complexity), nullable=False)
     frequency = Column(sqlalchemy.Enum(Frequency), nullable=False)
 
@@ -100,14 +100,14 @@ class DBClient:
     def update_chore_by_id(
         self,
         chore_id: int,
-        description: str | None = None,
+        name: str | None = None,
         complexity: Complexity | None = None,
         frequency: Frequency | None = None
     ) -> None:
         with self._sessionmaker() as session:
             chore = session.query(Chore).filter_by(id=chore_id).first()
-            if description:
-                chore.description = description  # type: ignore
+            if name:
+                chore.name = name  # type: ignore
             if complexity:
                 chore.complexity = complexity  # type: ignore
             if frequency:
