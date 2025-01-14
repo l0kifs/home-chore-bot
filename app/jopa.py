@@ -1,3 +1,4 @@
+import json
 import random
 
 
@@ -8,29 +9,19 @@ def split_list_to_groups(tasks: list[dict], persons: list[dict]):
     random.shuffle(persons)
     tasks.sort(key=lambda task: task['complexity'], reverse=True)
     tasks_by_person = [{'person': person, 'tasks': []} for person in persons]
-
-    # # Flatten dictionaries into a list of (key, value) pairs
-    # items = [(list(d.keys())[0], list(d.values())[0]) for d in list_of_dicts]
-    # # Sort items by value in descending order
-    # items.sort(key=lambda x: x[1], reverse=True)
     
-    # # Initialize groups
-    # groups = [[] for _ in range(group_count)]
-    # group_sums = [0] * group_count
-    # group_sizes = [0] * group_count
+    group_sums = [0] * len(persons)
+    group_complexities = [0] * len(persons)
     
-    # # Distribute items across groups
-    # for key, value in items:
-    #     # Find the group with the smallest sum; use size as a tie-breaker
-    #     min_group_idx = min(
-    #         range(group_count),
-    #         key=lambda i: (group_sums[i], group_sizes[i])
-    #     )
-    #     groups[min_group_idx].append({key: value})
-    #     group_sums[min_group_idx] += value
-    #     group_sizes[min_group_idx] += 1
-    
-    # return groups
+    for task in tasks:
+        min_group_idx = min(
+            range(len(persons)),
+            key=lambda i: (group_sums[i], group_complexities[i])
+        )
+        tasks_by_person[min_group_idx]['tasks'].append(task)
+        group_sums[min_group_idx] += 1
+        group_complexities[min_group_idx] += task['complexity']   
+    return tasks_by_person    
 
 # Example usage
 data = [
@@ -50,7 +41,7 @@ persons = [
     {'id': 3}
 ]
 result = split_list_to_groups(data, persons)
-
+print(json.dumps(result, indent = 4))
 # # Display results
 # for i, group in enumerate(result):
 #     group_sum = sum(list(d.values())[0] for d in group)
