@@ -1,29 +1,17 @@
-from enum import Enum
 import logging
 from typing import List
 
-from sqlalchemy import Column, Integer, String, create_engine
 import sqlalchemy
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+
+from enums.complexity import Complexity
+from enums.frequency import Frequency
+from models.chore import Chore as chore_model
+from models.person import Person as person_model
 
 
 Base = declarative_base()
-
-
-class Frequency(Enum):
-    DAILY = 1
-    EVERY_3_DAYS = 3
-    WEEKLY = 7
-    MONTHLY = 30
-    EVERY_2_MONTHS = 60
-
-
-class Complexity(Enum):
-    EASIEST = 1
-    EASY = 2
-    MEDIUM = 3
-    HARD = 4
-    HARDEST = 5
 
 
 class Person(Base):
@@ -31,6 +19,12 @@ class Person(Base):
     id = Column(Integer, primary_key=True)
     tg_user_id = Column(String, unique=True, nullable=False)
     tg_group_id = Column(String, unique=False, nullable=False)
+
+    def to_model(self) -> person_model:
+        return person_model(
+            tg_user_id=str(self.tg_user_id),
+            tg_group_id=str(self.tg_group_id)
+        )
 
 
 class Chore(Base):
@@ -40,6 +34,14 @@ class Chore(Base):
     name = Column(String, nullable=False)
     complexity = Column(sqlalchemy.Enum(Complexity), nullable=False)
     frequency = Column(sqlalchemy.Enum(Frequency), nullable=False)
+
+    def to_model(self) -> chore_model:
+        return chore_model(
+            tg_group_id=str(self.tg_group_id),
+            name=str(self.name),
+            complexity=Complexity(self.complexity).value,
+            frequency=Frequency(self.frequency).value
+        )
 
 
 class DBClient:
@@ -121,3 +123,19 @@ class DBClient:
         with self._sessionmaker() as session:
             session.query(Chore).filter_by(id=chore_id).delete()
             session.commit()
+
+
+# Usage test:
+# import os
+# data_dir_path = os.path.join(os.path.dirname(__file__), '..', 'data')
+# db_client = DBClient(f'sqlite:///{data_dir_path}/home_chore_bot.db')
+# db_client.add_person(Person(tg_user_id='111', tg_group_id='g1'))
+# db_client.add_person(Person(tg_user_id='222', tg_group_id='g1'))
+
+# db_client.add_chore(Chore(tg_group_id='g1', name='Wash Dishes', complexity=Complexity.EASY, frequency=Frequency.DAILY))
+# db_client.add_chore(Chore(tg_group_id='g1', name='Clean Bathroom', complexity=Complexity.HARD, frequency=Frequency.WEEKLY))
+
+# person = Person(tg_user_id='111', tg_group_id='g1')
+# print(person.to_model())
+# chore = Chore(tg_group_id='g1', name='Wash Dishes', complexity=Complexity.EASY, frequency=Frequency.DAILY)
+# print(chore.to_model())
