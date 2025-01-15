@@ -2,7 +2,7 @@ import datetime
 import logging
 
 from telegram import Update
-from telegram.ext import ContextTypes, Application, CommandHandler
+from telegram.ext import ContextTypes, Application, CommandHandler, CallbackContext
 from config.env_vars import EnvVars
 from domain.models import Chore, Frequency, Person
 from domain.services import ChoreDistributionService
@@ -34,6 +34,72 @@ ALL_CHORES = [
 distribution_service = ChoreDistributionService()
 assign_chores_use_case = AssignChoresUseCase(distribution_service)
 
+async def get_group_members(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handler for the /members command.
+    Fetches the group members and displays the list of usernames.
+    """
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+
+    if chat_type not in ['group', 'supergroup']:
+        await update.message.reply_text("This command only works in groups!")
+        return
+
+    try:
+        # Get the list of chat members
+        admins = await context.bot.get_chat_administrators(chat_id)
+        members = [admin.user.username for admin in admins]
+
+        members_text = f"Group members:\n{', '.join(members)}"
+        await context.bot.send_message(chat_id=chat_id, text=members_text)
+    except Exception as e:
+        logging.error(f"Failed to fetch group members: {e}")
+        await context.bot.send_message(chat_id=chat_id, text="Failed to fetch group members.")
+
+
+async def assign_group_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handler for the /assign command.
+    Assigns chores to group members and notifies the group.
+    """
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+
+    if chat_type not in ['group', 'supergroup']:
+        await update.message.reply_text("This command only works in groups!")
+        return
+
+    try:
+        # Get group admins (or all members if desired)
+        admins = await context.bot.get_chat_administrators(chat_id)
+        members = [admin.user.username for admin in admins]
+        
+        if not members:
+            await context.bot.send_message(chat_id=chat_id, text="No members found to assign tasks.")
+            return
+
+        # Assign tasks to members
+        reference_date = datetime.date.today()
+        persons = [Person(telegram_id=admin.user.id, name=admin.user.username) for admin in admins]
+        assignment_map = assign_chores_use_case.execute(ALL_CHORES, persons, reference_date)
+
+        # Notify each member of their assigned tasks
+        for person, chores_list in assignment_map.items():
+            if chores_list:
+                chores_text = "\n".join([f"- {chore.name}" for chore in chores_list])
+                message_text = f"@{person.name}, here are your tasks for today:\n{chores_text}"
+            else:
+                message_text = f"@{person.name}, you have no tasks today. Enjoy your day!"
+
+            await context.bot.send_message(chat_id=chat_id, text=message_text)
+
+    except Exception as e:
+        logging.error(f"Failed to assign group tasks: {e}")
+        await context.bot.send_message(chat_id=chat_id, text="Failed to assign tasks.")
+
+    
+ 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -102,7 +168,10 @@ def main() -> None:
 
     start_handler = CommandHandler("start", start_command)
 
-    application.add_handler(start_handler)
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("members", get_group_members))
+    application.add_handler(CommandHandler("assign", assign_group_tasks))
+
 
     job_queue = application.job_queue
     job_queue.run_daily(
