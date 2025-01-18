@@ -1,7 +1,7 @@
 import datetime
 from typing import Dict, List
 
-from app.clients.db_client import Chore
+from clients.db_client import Chore
 
 
 class ChoreDistributionService:
