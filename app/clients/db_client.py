@@ -7,9 +7,6 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 from enums.complexity import Complexity
 from enums.frequency import Frequency
-from models.chore import Chore as chore_model
-from models.person import Person as person_model
-
 
 Base = declarative_base()
 
@@ -20,11 +17,6 @@ class Person(Base):
     tg_user_id = Column(String, unique=True, nullable=False)
     tg_group_id = Column(String, unique=False, nullable=False)
 
-    def to_model(self) -> person_model:
-        return person_model(
-            tg_user_id=str(self.tg_user_id),
-            tg_group_id=str(self.tg_group_id)
-        )
 
 
 class Chore(Base):
@@ -34,14 +26,6 @@ class Chore(Base):
     name = Column(String, nullable=False)
     complexity = Column(sqlalchemy.Enum(Complexity), nullable=False)
     frequency = Column(sqlalchemy.Enum(Frequency), nullable=False)
-
-    def to_model(self) -> chore_model:
-        return chore_model(
-            tg_group_id=str(self.tg_group_id),
-            name=str(self.name),
-            complexity=Complexity(self.complexity).value,
-            frequency=Frequency(self.frequency).value
-        )
 
 
 class DBClient:

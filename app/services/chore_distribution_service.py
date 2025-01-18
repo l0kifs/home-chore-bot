@@ -1,8 +1,7 @@
 import datetime
 from typing import Dict, List
 
-from models.chore import Chore
-from models.person import Person
+from app.clients.db_client import Chore
 
 
 class ChoreDistributionService:
@@ -17,7 +16,7 @@ class ChoreDistributionService:
         today_date = datetime.date.today()
         day_of_year = today_date.timetuple().tm_yday
         for chore in all_chores:
-            if (day_of_year % chore.frequency) == 0:
+            if (day_of_year % chore.frequency.value) == 0:
                 chores_due.append(chore)
         return chores_due
     
