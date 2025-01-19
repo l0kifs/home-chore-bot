@@ -4,13 +4,20 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes, Application, CommandHandler, CallbackContext
 from config.env_vars import EnvVars
-from domain.models import Chore, Frequency, Person
+from domain.models import Chore, Frequency
 from domain.services import ChoreDistributionService
 from use_cases.assign_chores import AssignChoresUseCase
+from clients.db_client import DBClient
+from clients.db_client import Person as DBPerson  # The SQLAlchemy model
+from clients import db_client  #
+from sqlalchemy.exc import SQLAlchemyError  # Importing the necessary exception
 
 
-PERSON_1 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[0], name="Serj")
-PERSON_2 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[1], name="Vika")
+
+
+
+# PERSON_1 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[0], name="Serj")
+# PERSON_2 = Person(telegram_id=EnvVars().TELEGRAM_CHAT_IDS.split(',')[1], name="Vika")
 
 
 ALL_CHORES = [
@@ -30,76 +37,43 @@ ALL_CHORES = [
     Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=2),
 ]
 
+db_client = DBClient(db_url="sqlite:///home_chore_bot")
 
 distribution_service = ChoreDistributionService()
 assign_chores_use_case = AssignChoresUseCase(distribution_service)
 
-async def get_group_members(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Handler for the /members command.
-    Fetches the group members and displays the list of usernames.
+    Handler for the /userinfo command. Retrieves the user's info and saves it to the database.
     """
-    chat_id = update.effective_chat.id
-    chat_type = update.effective_chat.type
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    first_name = update.effective_user.first_name
+    last_name = update.effective_user.last_name
+    tg_group_id = str(update.effective_chat.id)  # Use the group ID for the chat
 
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text("This command only works in groups!")
-        return
+    # Check if the user is already in the database
+    existing_person = db_client.get_person_by_tg_user_id(str(user_id))
 
-    try:
-        # Get the list of chat members
-        admins = await context.bot.get_chat_administrators(chat_id)
-        members = [admin.user.username for admin in admins]
+    if existing_person:
+        # If the user already exists, update the existing record
+        existing_person.tg_group_id = tg_group_id
+        try:
+            db_client.update_person(existing_person)  # Assuming a method to update the person exists
+            await update.message.reply_text(f"Информация о тебе была обновлена, {username}.")
+        except SQLAlchemyError as e:
+            await update.message.reply_text(f"Произошла ошибка при обновлении данных: {str(e)}.")
+    else:
+        # If the user does not exist, create a new record
+        try:
+            person = DBPerson(tg_user_id=str(user_id), tg_group_id=tg_group_id)
+            db_client.add_person(person)
+            await update.message.reply_text(f"Информация о тебе была сохранена, {username}.")
+        except SQLAlchemyError as e:
+            await update.message.reply_text(f"Произошла ошибка при добавлении данных: {str(e)}.")
+        except Exception as e:
+            await update.message.reply_text(f"Произошла непредвиденная ошибка: {str(e)}.")
 
-        members_text = f"Group members:\n{', '.join(members)}"
-        await context.bot.send_message(chat_id=chat_id, text=members_text)
-    except Exception as e:
-        logging.error(f"Failed to fetch group members: {e}")
-        await context.bot.send_message(chat_id=chat_id, text="Failed to fetch group members.")
-
-
-async def assign_group_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Handler for the /assign command.
-    Assigns chores to group members and notifies the group.
-    """
-    chat_id = update.effective_chat.id
-    chat_type = update.effective_chat.type
-
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text("This command only works in groups!")
-        return
-
-    try:
-        # Get group admins (or all members if desired)
-        admins = await context.bot.get_chat_administrators(chat_id)
-        members = [admin.user.username for admin in admins]
-        
-        if not members:
-            await context.bot.send_message(chat_id=chat_id, text="No members found to assign tasks.")
-            return
-
-        # Assign tasks to members
-        reference_date = datetime.date.today()
-        persons = [Person(telegram_id=admin.user.id, name=admin.user.username) for admin in admins]
-        assignment_map = assign_chores_use_case.execute(ALL_CHORES, persons, reference_date)
-
-        # Notify each member of their assigned tasks
-        for person, chores_list in assignment_map.items():
-            if chores_list:
-                chores_text = "\n".join([f"- {chore.name}" for chore in chores_list])
-                message_text = f"@{person.name}, here are your tasks for today:\n{chores_text}"
-            else:
-                message_text = f"@{person.name}, you have no tasks today. Enjoy your day!"
-
-            await context.bot.send_message(chat_id=chat_id, text=message_text)
-
-    except Exception as e:
-        logging.error(f"Failed to assign group tasks: {e}")
-        await context.bot.send_message(chat_id=chat_id, text="Failed to assign tasks.")
-
-    
- 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -114,7 +88,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
     print(f"User ID: {user_id}, Username: {username}")
-
 
 async def notify_chores(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -167,11 +140,9 @@ def main() -> None:
     ).build()
 
     start_handler = CommandHandler("start", start_command)
-
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("members", get_group_members))
-    application.add_handler(CommandHandler("assign", assign_group_tasks))
-
+    application.add_handler(start_handler)
+    user_info_handler = CommandHandler("userinfo", user_info_command)
+    application.add_handler(user_info_handler)
 
     job_queue = application.job_queue
     job_queue.run_daily(
