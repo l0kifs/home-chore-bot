@@ -34,6 +34,7 @@ class DBClient:
         db_url: str,
     ) -> None:
         self._log = logging.getLogger(self.__class__.__name__)
+
         self._engine = create_engine(url=db_url, echo=False)
         Base.metadata.create_all(self._engine)
         self._sessionmaker = sessionmaker(bind=self._engine)
@@ -42,6 +43,7 @@ class DBClient:
         self,
         person: Person
     ) -> None:
+        self._log.info("Adding person")
         with self._sessionmaker() as session:
             session.add(person)
             session.commit()
@@ -50,6 +52,7 @@ class DBClient:
         self,
         tg_user_id: str
     ) -> Person:
+        self._log.info("Getting person by tg_user_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_user_id=tg_user_id).first()
     
@@ -57,6 +60,7 @@ class DBClient:
         self,
         tg_group_id: str
     ) -> List[Person]:
+        self._log.info("Getting persons by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
         
@@ -64,6 +68,7 @@ class DBClient:
         self,
         tg_user_id: str
     ) -> None:
+        self._log.info("Deleting person by tg_user_id")
         with self._sessionmaker() as session:
             session.query(Person).filter_by(tg_user_id=tg_user_id).delete()
             session.commit()
@@ -72,6 +77,7 @@ class DBClient:
         self,
         chore: Chore
     ) -> None:
+        self._log.info("Adding chore")
         with self._sessionmaker() as session:
             session.add(chore)
             session.commit()
@@ -80,6 +86,7 @@ class DBClient:
         self,
         tg_group_id: str
     ) -> List[Chore]:
+        self._log.info("Getting chores by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Chore).filter_by(tg_group_id=tg_group_id).all()
         
@@ -90,6 +97,7 @@ class DBClient:
         complexity: Complexity | None = None,
         frequency: Frequency | None = None
     ) -> None:
+        self._log.info("Updating chore by id")
         with self._sessionmaker() as session:
             chore = session.query(Chore).filter_by(id=chore_id).first()
             if name:
@@ -104,6 +112,7 @@ class DBClient:
         self,
         chore_id: int
     ) -> None:
+        self._log.info("Deleting chore by id")
         with self._sessionmaker() as session:
             session.query(Chore).filter_by(id=chore_id).delete()
             session.commit()

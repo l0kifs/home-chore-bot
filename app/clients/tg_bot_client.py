@@ -12,9 +12,9 @@ class TgBotClient:
         self._bot: Application = Application.builder().token(token).build()
         self._set_commands(self._bot)
         self._set_job_queue(self._bot)
-        self._chat_id = None
 
     def _set_commands(self, application: Application) -> None:
+        self._log.info("Setting commands...")
         commands = [
             {"command": "start", "description": "Стартовое сообщение бота", "callback": self._start_command},
             {"command": "message", "description": "Отправить сообщение пользователю", "callback": self._message_command},
@@ -24,6 +24,7 @@ class TgBotClient:
         application.bot.set_my_commands([BotCommand(cmd["command"], cmd["description"]) for cmd in commands])
 
     def _set_job_queue(self, application: Application) -> None:
+        self._log.info("Setting job queue...")
         if not application.job_queue:
             self._log.error("Job queue not found in bot. Exiting.")
             return
@@ -40,6 +41,7 @@ class TgBotClient:
         )
 
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        self._log.info("Start command received.")
         if not update.effective_chat or not update.message:
             return
         if update.effective_chat.type in ['group', 'supergroup']:
@@ -49,6 +51,7 @@ class TgBotClient:
             )
 
     async def _message_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        self._log.info("Message command received.")
         if not update.effective_chat or not update.message or not update.effective_user:
             return
         if update.effective_chat.type in ['group', 'supergroup']:
@@ -56,6 +59,7 @@ class TgBotClient:
             await update.message.reply_text(f'{user.username} использовал команду /message')
 
     async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
+        self._log.info("Notify chores daily job started.")
         if not self._chat_id:
             self._log.error("Job context not found.")
             return
@@ -65,4 +69,5 @@ class TgBotClient:
         )
 
     def run(self):
+        self._log.info("Starting bot polling...")
         self._bot.run_polling()
