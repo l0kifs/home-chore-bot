@@ -45,7 +45,6 @@ class TgBotClient:
         if not update.effective_chat or not update.message:
             return
         if update.effective_chat.type in ['group', 'supergroup']:
-            self._chat_id = update.effective_chat.id
             await update.message.reply_text(
                 text="Привет! Я бот Антисрач. Расскажу, что делать, чтобы не зарасти говной."
             )
