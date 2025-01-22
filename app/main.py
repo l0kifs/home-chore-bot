@@ -6,5 +6,6 @@ from clients.tg_bot_client import TgBotClient
 
 if __name__ == "__main__":
     logging.config.dictConfig(logging_config)
-    bot = TgBotClient(get_env_vars().TELEGRAM_BOT_TOKEN)
+    # bot = TgBotClient(get_env_vars().TELEGRAM_BOT_TOKEN)
+    bot = TgBotClient(get_env_vars().TELEGRAM_BOT_TOKEN, get_env_vars().DB_URL)
     bot.run()

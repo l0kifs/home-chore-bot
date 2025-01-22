@@ -1,6 +1,6 @@
 import logging
 import pytest
-from app.clients.db_client import DBClient, Person, Chore, Frequency, Complexity
+from clients.db_client import DBClient, Person, Chore, Frequency, Complexity
 
 log = logging.getLogger(__name__)
 
