@@ -39,15 +39,26 @@ class DBClient:
         Base.metadata.create_all(self._engine)
         self._sessionmaker = sessionmaker(bind=self._engine)
     
-    def add_person(
-        self,
-        person: Person
-    ) -> None:
-        self._log.info("Adding person")
-        with self._sessionmaker() as session:
+    # def add_person(
+    #     self,
+    #     person: Person
+    # ) -> None:
+    #     self._log.info("Adding person")
+    #     with self._sessionmaker() as session:
+    #         session.add(person)
+    #         session.commit()
+    
+    def add_person(self, person: Person):
+        session = self._sessionmaker()
+        try:
             session.add(person)
             session.commit()
-
+        except sqlalchemy.exc.IntegrityError:
+            self._log.warning(f"User {person.tg_user_id} is already in the database.")
+            session.rollback()
+        finally:
+            session.close()
+            
     def get_person_by_tg_user_id(
         self,
         tg_user_id: str
@@ -63,6 +74,22 @@ class DBClient:
         self._log.info("Getting persons by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
+    
+    # def get_person_by_user_and_group(self, tg_user_id: str, tg_group_id: str) -> Person:
+    #     session = self.Session()
+    #     try:
+    #         return session.query(Person).filter_by(tg_user_id=tg_user_id, tg_group_id=tg_group_id).first()
+    #     finally:
+    #         session.close()
+            
+            
+    def get_person_by_user_and_group(self, tg_user_id: str, tg_group_id: str):
+        try:
+            with self._sessionmaker() as session:
+                return session.query(Person).filter_by(tg_user_id=tg_user_id, tg_group_id=tg_group_id).first()
+        except Exception as e:
+            print(f"Error in get_person_by_user_and_group: {e}")
+            raise
         
     def delete_person_by_tg_user_id(
         self,
