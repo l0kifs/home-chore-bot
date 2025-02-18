@@ -6,9 +6,10 @@ from clients.db_client import  Chore, Person, DBClient
 from enums.complexity import Complexity
 from enums.frequency import Frequency
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
+from logic.assing_by_date import ChoreDistributionService
 
 
-ASK_NAME, ASK_COMPLEXITY, ASK_FREQUENCY = range(3)
+ASK_NAME, ASK_COMPLEXITY, ASK_FREQUENCY, ASK_START_DATE = range(4)
 
 class TgBotClient:
     def __init__(self, token: str, db_url: str):
@@ -16,8 +17,7 @@ class TgBotClient:
 
         self._log = logging.getLogger(self.__class__.__name__)
         
-        
-
+        self.chore_service = ChoreDistributionService()  # Добавляем этот атрибут
         self._bot: Application = Application.builder().token(token).build()
         self._set_commands(self._bot)
         self._set_job_queue(self._bot)
@@ -71,7 +71,7 @@ class TgBotClient:
 
         jobs = [
             # {"name": "notify_chores_daily", "callback": self._notify_chores_daily, "interval": timedelta(days=1), "first": timedelta(seconds=5)}
-            {"name": "notify_chores_daily", "callback": self._notify_chores_daily, "interval": timedelta(days=1), "first": time(hour=2, minute=2, tzinfo=timezone.utc)},
+            {"name": "notify_chores_daily", "callback": self._notify_chores_daily, "interval": timedelta(days=1), "first": time(hour=12, minute=15, tzinfo=timezone.utc)},
         ]
         for job in jobs:
             application.job_queue.run_repeating(
@@ -96,7 +96,7 @@ class TgBotClient:
     async def start_add_chore(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("What's the name of the chore?")
         return ASK_NAME 
-
+    
     async def ask_complexity(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['chore_name'] = update.message.text
         keyboard = [
@@ -201,50 +201,73 @@ class TgBotClient:
         if update.effective_chat.type in ['group', 'supergroup']:
             user = update.effective_user
             await update.message.reply_text(f'{user.username} использовал команду /message')
-
-
-    # async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
-    #     self._log.info("Notify chores daily job started.")
-    #     if not self._chat_id:
-    #         self._log.error("Job context not found.")
-    #         return
-    #     await context.bot.send_message(
-    #         chat_id=self._chat_id,
-    #         text="Доброе утро! Напоминаю, что сегодня нужно сделать следующие дела: ..."
-    #     )
+    
     async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
-        
-        self._log.debug(f"_chat_id: {self._chat_id}")
-        self._log.debug(f"_ch at_id: {self._chat_id}")
         self._log.info("Notify chores daily job started.")
 
         if not self._chat_id:
             self._log.error("Job context not found.")
             return
 
-        tg_group_id = str(self._chat_id)  # Assuming _chat_id is the Telegram group ID
+        tg_group_id = str(self._chat_id)
         persons = self.db_client.get_persons_by_tg_group_id(tg_group_id)
-        chores = self.db_client.get_chores_by_tg_group_id(tg_group_id)
+        all_chores = self.db_client.get_chores_by_tg_group_id(tg_group_id)
 
-        if not persons or not chores:
+        if not persons or not all_chores:
             await context.bot.send_message(
                 chat_id=self._chat_id,
-                text="Сегодня нет назначенных дел. Добавьте задачи или участников, чтобы начать!"
+                text="Сегодня нет назначенных дел. Добавьте задачи или участников!"
             )
             return
 
-        # Assign tasks (reuse your existing logic or fetch assignments if stored)
-        assignment = split_list_to_groups(chores, persons)
+        # Фильтруем задачи на сегодня и распределяем их
+        chores_due_today = self.chore_service.get_chores_due_today(all_chores)
+        assignment = self.chore_service.assign_tasks(chores_due_today, persons)
 
-        # Create the notification message
+        # Создаем сообщение
         message = "Доброе утро! Вот сегодняшние задачи:\n"
         for group in assignment:
             person = group['person']
-            tasks = ", ".join([task['name'] for task in group['tasks']])
-            message += f"👤 {person.tg_user_id}: {tasks if tasks else 'нет задач'}\n"
+            tasks = ", ".join([task['name'] for task in group['tasks']]) or "нет задач"
+            message += f"👤 {person.tg_user_id}: {tasks}\n"
 
-        # Send the message
+        # Отправляем уведомление
         await context.bot.send_message(chat_id=self._chat_id, text=message)
+    
+    # async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
+        
+    #     self._log.debug(f"_chat_id: {self._chat_id}")
+    #     self._log.debug(f"_ch at_id: {self._chat_id}")
+    #     self._log.info("Notify chores daily job started.")
+        
+
+    #     if not self._chat_id:
+    #         self._log.error("Job context not found.")
+    #         return
+
+    #     tg_group_id = str(self._chat_id)  # Assuming _chat_id is the Telegram group ID
+    #     persons = self.db_client.get_persons_by_tg_group_id(tg_group_id)
+    #     chores = self.db_client.get_chores_by_tg_group_id(tg_group_id)
+
+    #     if not persons or not chores:
+    #         await context.bot.send_message(
+    #             chat_id=self._chat_id,
+    #             text="Сегодня нет назначенных дел. Добавьте задачи или участников, чтобы начать!"
+    #         )
+    #         return
+
+    #     # Assign tasks (reuse your existing logic or fetch assignments if stored)
+    #     assignment = split_list_to_groups(chores, persons)
+
+    #     # Create the notification message
+    #     message = "Доброе утро! Вот сегодняшние задачи:\n"
+    #     for group in assignment:
+    #         person = group['person']
+    #         tasks = ", ".join([task['name'] for task in group['tasks']])
+    #         message += f"👤 {person.tg_user_id}: {tasks if tasks else 'нет задач'}\n"
+
+    #     # Send the message
+    #     await context.bot.send_message(chat_id=self._chat_id, text=message)
 
         
     async def assign_tasks_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
