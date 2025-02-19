@@ -39,14 +39,6 @@ class DBClient:
         Base.metadata.create_all(self._engine)
         self._sessionmaker = sessionmaker(bind=self._engine)
     
-    # def add_person(
-    #     self,
-    #     person: Person
-    # ) -> None:
-    #     self._log.info("Adding person")
-    #     with self._sessionmaker() as session:
-    #         session.add(person)
-    #         session.commit()
     
     def add_person(self, person: Person):
         session = self._sessionmaker()
@@ -66,6 +58,12 @@ class DBClient:
         self._log.info("Getting person by tg_user_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_user_id=tg_user_id).first()
+        
+    def get_chore_by_name_and_tg_group_id(self, task_name: str, tg_group_id: str):
+        with self._sessionmaker() as session:
+            return session.query(Chore).filter_by(name=task_name, tg_group_id=tg_group_id).first()
+
+
     
     def get_persons_by_tg_group_id(
         self,
@@ -75,13 +73,6 @@ class DBClient:
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
     
-    # def get_person_by_user_and_group(self, tg_user_id: str, tg_group_id: str) -> Person:
-    #     session = self.Session()
-    #     try:
-    #         return session.query(Person).filter_by(tg_user_id=tg_user_id, tg_group_id=tg_group_id).first()
-    #     finally:
-    #         session.close()
-            
             
     def get_person_by_user_and_group(self, tg_user_id: str, tg_group_id: str):
         try:
@@ -143,19 +134,3 @@ class DBClient:
         with self._sessionmaker() as session:
             session.query(Chore).filter_by(id=chore_id).delete()
             session.commit()
-
-
-# Usage test:
-# import os
-# data_dir_path = os.path.join(os.path.dirname(__file__), '..', 'data')
-# db_client = DBClient(f'sqlite:///{data_dir_path}/home_chore_bot.db')
-# db_client.add_person(Person(tg_user_id='111', tg_group_id='g1'))
-# db_client.add_person(Person(tg_user_id='222', tg_group_id='g1'))
-
-# db_client.add_chore(Chore(tg_group_id='g1', name='Wash Dishes', complexity=Complexity.EASY, frequency=Frequency.DAILY))
-# db_client.add_chore(Chore(tg_group_id='g1', name='Clean Bathroom', complexity=Complexity.HARD, frequency=Frequency.WEEKLY))
-
-# person = Person(tg_user_id='111', tg_group_id='g1')
-# print(person.to_model())
-# chore = Chore(tg_group_id='g1', name='Wash Dishes', complexity=Complexity.EASY, frequency=Frequency.DAILY)
-# print(chore.to_model())

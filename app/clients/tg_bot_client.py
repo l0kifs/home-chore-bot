@@ -1,6 +1,5 @@
 import logging
 from datetime import timedelta, timezone, time
-from logic.chore_distribution import  split_list_to_groups
 from telegram import BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from clients.db_client import  Chore, Person, DBClient
 from enums.complexity import Complexity
@@ -9,44 +8,54 @@ from telegram.ext import Application, CommandHandler, ContextTypes, Conversation
 from logic.assing_by_date import ChoreDistributionService
 
 
+
 ASK_NAME, ASK_COMPLEXITY, ASK_FREQUENCY, ASK_START_DATE = range(4)
+
+import logging
+from telegram import BotCommand
+from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters
 
 class TgBotClient:
     def __init__(self, token: str, db_url: str):
         self.db_client = DBClient(db_url)  # Initialize the database client
-
         self._log = logging.getLogger(self.__class__.__name__)
         
         self.chore_service = ChoreDistributionService()  # Добавляем этот атрибут
-        self._bot: Application = Application.builder().token(token).build()
+
+        # ✅ Добавляем post_init в Application.builder()
+        self._bot: Application = (
+            Application.builder()
+            .token(token)
+            .post_init(self._post_init)  # <-- передаем post_init здесь!
+            .build()
+        )
+
         self._set_commands(self._bot)
         self._set_job_queue(self._bot)
+
         self._chat_id = None  # Initialize _chat_id here
 
-    
     def set_chat_id(self, chat_id: int) -> None:
         self._chat_id = chat_id
         self._log.info(f"Chat ID set to {self._chat_id}")
 
     def _set_commands(self, application: Application) -> None:
-        # Add standalone command handlers
-
+        """Добавляет обработчики команд в приложение."""
         self._log.info("Setting standalone commands...")
+
         commands = [
-            {"command": "start", "description": "Стартовое сообщение бота", "callback": self._start_command},
-            {"command": "message", "description": "Отправить сообщение пользователю", "callback": self._message_command},
-            {"command": "assign_tasks", "description": "Распределить задачи между людьми", "callback": self.assign_tasks_command},
-            # {"command": "add_person", "description": "Добавить или зассал", "callback": self.add_person_command},
+            {"command": "start", "callback": self._start_command},
+            {"command": "message", "callback": self._message_command},
+            {"command": "assign_tasks", "callback": self.assign_tasks_command},
+            {"command": "list_tasks", "callback": self.tasks_list_command},
+            {"command": "delete_task", "callback": self.delete_task_command},
+            {"command": "edit_task", "callback": self.edit_task_command},
         ]
 
         for cmd in commands:
-            application.add_handler(handler=CommandHandler(command=cmd["command"], callback=cmd["callback"]))
+            application.add_handler(CommandHandler(cmd["command"], cmd["callback"]))
 
-        # Set bot commands
-        application.bot.set_my_commands([BotCommand(cmd["command"], cmd["description"]) for cmd in commands])
-
-
-        # Add conversation handler for 'add_chore' command
+        # Добавляем обработчик диалога
         self._log.info("Setting conversation handler for 'add_chore'...")
         conversation_handler = ConversationHandler(
             entry_points=[CommandHandler("add_chore", self.start_add_chore)],
@@ -60,8 +69,22 @@ class TgBotClient:
         application.add_handler(conversation_handler)
         application.add_handler(MessageHandler(filters.ALL, self.add_person_on_interaction))
 
-
         self._log.info("All commands and handlers have been set.")
+
+    async def _post_init(self, application: Application):
+        """Устанавливает команды для бота после инициализации."""
+        self._log.info("Setting bot commands after initialization...")
+        commands = [
+            BotCommand("start", "Стартовое сообщение бота"),
+            BotCommand("message", "Отправить сообщение пользователю"),
+            BotCommand("assign_tasks", "Распределить задачи между людьми"),
+            BotCommand("list_tasks", "Показать все пуки"),
+            BotCommand("delete_task", "Удалить задачу"),
+            BotCommand("edit_task", "Изменить задачу"),
+        ]
+        await application.bot.set_my_commands(commands)
+        self._log.info("Bot commands successfully set.")
+
 
     def _set_job_queue(self, application: Application) -> None:
         self._log.info("Setting job queue...")
@@ -92,11 +115,93 @@ class TgBotClient:
             await update.message.reply_text(
                 text="Привет! Я бот Антисрач. Расскажу, что делать, чтобы не зарасти говной."
             )
+            
                 
+    async def edit_task_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        tg_group_id = str(update.message.chat_id)
+
+        # Проверяем, переданы ли аргументы
+        if not context.args or len(context.args) < 3:
+            await update.message.reply_text(
+                "Usage: /edit_task <task_name> <new_name> <new_complexity> [new_frequency]"
+            )
+            return
+
+        task_name, new_name, new_complexity, *optional_frequency = context.args
+
+        # Проверяем, что сложность является числом
+        if not new_complexity.isdigit():
+            await update.message.reply_text("❌ Complexity must be a number (1-5).")
+            return
+
+        new_complexity = int(new_complexity)
+
+        # 🔥 Преобразуем число в Enum (если у тебя сложности идут от 1 до 5)
+        complexity_map = {
+            1: "EASIEST",
+            2: "EASY",
+            3: "MEDIUM",
+            4: "HARD",
+            5: "HARDEST"
+        }
+
+        if new_complexity not in complexity_map:
+            await update.message.reply_text("❌ Complexity must be between 1 and 5.")
+            return
+
+        new_complexity = complexity_map[new_complexity]  # Теперь это строка, как в БД
+
+        # Проверяем частоту
+        new_frequency = optional_frequency[0].upper() if optional_frequency else None
+
+        if new_frequency and new_frequency not in Frequency.__members__:
+            valid_frequencies = ", ".join(Frequency.__members__.keys())
+            await update.message.reply_text(f"❌ Invalid frequency. Choose from: {valid_frequencies}")
+            return
+
+        new_frequency = Frequency[new_frequency] if new_frequency else None
+
+        # Ищем задачу в БД
+        chore = self.db_client.get_chore_by_name_and_tg_group_id(task_name, tg_group_id)
+
+        if not chore:
+            await update.message.reply_text(f"❌ No such task found: {task_name}")
+            return
+
+        # ✅ Обновляем задачу
+        self.db_client.update_chore_by_id(
+            chore.id,
+            name=new_name,
+            complexity=new_complexity,  # Теперь это строка из Enum
+            frequency=new_frequency
+        )
+
+        await update.message.reply_text(f"✅ Task '{task_name}' updated successfully!")
+
+
+                    
     async def start_add_chore(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("What's the name of the chore?")
         return ASK_NAME 
-    
+        
+    async def tasks_list_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        tg_group_id = str(update.message.chat_id)
+        
+        # Получаем список всех задач в группе
+        chores = self.db_client.get_chores_by_tg_group_id(tg_group_id)
+
+        if not chores:
+            await update.message.reply_text("No chores available in this group.")
+            return
+
+        # Формируем список задач
+        message = "📋 Вот ваши пуки:\n"
+        for chore in chores:
+            message += f"- {chore.name} (Сложность: {chore.complexity.value}, Переодичность : {chore.frequency.value})\n"
+
+        await update.message.reply_text(message)
+
+        
     async def ask_complexity(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['chore_name'] = update.message.text
         keyboard = [
@@ -106,6 +211,27 @@ class TgBotClient:
         await update.message.reply_text("Select the complexity:", reply_markup=reply_markup)
         return ASK_COMPLEXITY
     
+    async def delete_task_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        tg_group_id = str(update.message.chat_id)
+
+        # Проверяем, передан ли аргумент (название задачи)
+        if not context.args:
+            await update.message.reply_text("Usage: /delete_task <task_name>")
+            return
+
+        task_name = " ".join(context.args)
+
+        # Ищем задачу в БД
+        chore = self.db_client.get_chore_by_name_and_tg_group_id(task_name, tg_group_id)
+
+        if not chore:
+            await update.message.reply_text(f"Нет такой задачи {task_name}")
+            return
+
+        # Удаляем задачу
+        self.db_client.delete_chore_by_id(chore.id)
+        await update.message.reply_text(f"Task '{task_name}' удалена.")
+
     async def ask_frequency(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             complexity = Complexity[update.message.text.upper()]
@@ -233,42 +359,6 @@ class TgBotClient:
 
         # Отправляем уведомление
         await context.bot.send_message(chat_id=self._chat_id, text=message)
-    
-    # async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
-        
-    #     self._log.debug(f"_chat_id: {self._chat_id}")
-    #     self._log.debug(f"_ch at_id: {self._chat_id}")
-    #     self._log.info("Notify chores daily job started.")
-        
-
-    #     if not self._chat_id:
-    #         self._log.error("Job context not found.")
-    #         return
-
-    #     tg_group_id = str(self._chat_id)  # Assuming _chat_id is the Telegram group ID
-    #     persons = self.db_client.get_persons_by_tg_group_id(tg_group_id)
-    #     chores = self.db_client.get_chores_by_tg_group_id(tg_group_id)
-
-    #     if not persons or not chores:
-    #         await context.bot.send_message(
-    #             chat_id=self._chat_id,
-    #             text="Сегодня нет назначенных дел. Добавьте задачи или участников, чтобы начать!"
-    #         )
-    #         return
-
-    #     # Assign tasks (reuse your existing logic or fetch assignments if stored)
-    #     assignment = split_list_to_groups(chores, persons)
-
-    #     # Create the notification message
-    #     message = "Доброе утро! Вот сегодняшние задачи:\n"
-    #     for group in assignment:
-    #         person = group['person']
-    #         tasks = ", ".join([task['name'] for task in group['tasks']])
-    #         message += f"👤 {person.tg_user_id}: {tasks if tasks else 'нет задач'}\n"
-
-    #     # Send the message
-    #     await context.bot.send_message(chat_id=self._chat_id, text=message)
-
         
     async def assign_tasks_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         tg_group_id = str(update.message.chat_id)
@@ -285,24 +375,25 @@ class TgBotClient:
             return
 
         # Prepare data for the assignment logic
-        persons_data = [{"tg_user_id": person.tg_user_id, "id": person.id} for person in persons]
-        chores_data = [
-            {"name": chore.name, "complexity": chore.complexity.value, "id": chore.id}
-            for chore in chores
-        ]
+        # persons_data = [{"tg_user_id": person.tg_user_id, "id": person.id} for person in persons]
+        # chores_data = [
+        #     {"name": chore.name, "complexity": chore.complexity.value, "id": chore.id}
+        #     for chore in chores
+        # ]
 
-        # Call the assignment logic
-        assignment = split_list_to_groups(chores_data, persons_data)
+        chore_service = ChoreDistributionService()
+        assignment = chore_service.assign_tasks(chores, persons)
 
         # Prepare and send the response message
         message = "Task Assignments:\n"
         for group in assignment:
             person = group["person"]
             tasks = ", ".join([task["name"] for task in group["tasks"]])
-            message += f"👤 {person['tg_user_id']}: {tasks if tasks else 'No tasks assigned'}\n"
+            message += f"👤 {person.tg_user_id}: {tasks if tasks else 'No tasks assigned'}\n"
         
         await update.message.reply_text(message)
         
     def run(self):
         self._log.info("Starting bot polling...")
         self._bot.run_polling()
+
