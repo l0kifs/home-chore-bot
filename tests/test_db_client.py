@@ -1,6 +1,6 @@
 import logging
 import pytest
-from clients.db_client import DBClient, Person, Chore, Frequency, Complexity
+from app.clients.db_client import DBClient, Person, Chore, Frequency, Complexity
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +37,18 @@ def test_get_persons_by_tg_group_id(db_client):
     assert result[1].tg_user_id == tg_user_id2
 
 
+def test_get_person_by_user_and_group(db_client):
+    tg_user_id = '123'
+    tg_group_id = 'group1'
+    person = Person(tg_user_id=tg_user_id, tg_group_id=tg_group_id)
+    db_client.add_person(person)
+    
+    result = db_client.get_person_by_user_and_group(tg_user_id, tg_group_id)
+    assert result is not None
+    assert result.tg_user_id == tg_user_id
+    assert result.tg_group_id == tg_group_id
+
+
 def test_delete_person_by_tg_user_id(db_client):
     tg_user_id = '123'
     tg_group_id = 'group1'
@@ -60,6 +72,22 @@ def test_add_chore(db_client):
     assert result[0].name == name
     assert result[0].complexity == complexity
     assert result[0].frequency == frequency
+
+
+def test_get_chore_by_name_and_tg_group_id(db_client):
+    tg_group_id = 'group1'
+    name = 'chore1'
+    complexity = Complexity.EASY
+    frequency = Frequency.DAILY
+    chore = Chore(tg_group_id=tg_group_id, name=name, complexity=complexity, frequency=frequency)
+    db_client.add_chore(chore)
+    
+    result = db_client.get_chore_by_name_and_tg_group_id(name, tg_group_id)
+    assert result is not None
+    assert result.name == name
+    assert result.tg_group_id == tg_group_id
+    assert result.complexity == complexity
+    assert result.frequency == frequency
 
 
 def test_update_chore_by_id(db_client):

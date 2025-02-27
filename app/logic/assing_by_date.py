@@ -9,8 +9,13 @@ class ChoreDistributionService:
         pass
 
     def get_chores_due_today(self, all_chores: List[Chore]) -> List[Chore]:
-        today_date = datetime.date.today() + timedelta(days=5)  
-        day_of_year = today_date.timetuple().tm_yday
+        today_date = datetime.date.today()
+        first_day_of_year = datetime.date(today_date.year, 1, 1)
+        jan_1_weekday = first_day_of_year.weekday()
+        days_offset = (5 - jan_1_weekday) % 7
+        adjusted_first_day = first_day_of_year + timedelta(days=days_offset)
+        day_of_year = (today_date - adjusted_first_day).days
+
         return [chore for chore in all_chores if (day_of_year % chore.frequency.value) == 0]
 
     def assign_tasks(self, chores: List[Chore], persons: List[Person]):

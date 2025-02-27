@@ -63,8 +63,6 @@ class DBClient:
         with self._sessionmaker() as session:
             return session.query(Chore).filter_by(name=task_name, tg_group_id=tg_group_id).first()
 
-
-    
     def get_persons_by_tg_group_id(
         self,
         tg_group_id: str
@@ -72,7 +70,6 @@ class DBClient:
         self._log.info("Getting persons by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
-    
             
     def get_person_by_user_and_group(self, tg_user_id: str, tg_group_id: str):
         try:
