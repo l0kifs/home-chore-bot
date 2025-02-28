@@ -1,9 +1,10 @@
 # import logging
+from datetime import UTC, datetime
 from typing import List
 
 from loguru import logger
 import sqlalchemy
-from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from enums.complexity import Complexity
@@ -14,9 +15,13 @@ Base = declarative_base()
 
 class Person(Base):
     __tablename__ = 'persons'
+    # service fields
     id = Column(Integer, primary_key=True)
-    tg_user_id = Column(String, unique=True, nullable=False)
-    tg_group_id = Column(String, unique=False, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    # entry fields
+    tg_user_id = Column(Integer, unique=True, nullable=False)
+    tg_group_id = Column(Integer, unique=False, nullable=False)
 
 
 
@@ -54,35 +59,36 @@ class DBClient:
             
     def get_person_by_tg_user_id(
         self,
-        tg_user_id: str
+        tg_user_id: int
     ) -> Person:
         logger.info("Getting person by tg_user_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_user_id=tg_user_id).first()
-        
-    def get_chore_by_name_and_tg_group_id(self, task_name: str, tg_group_id: str):
-        with self._sessionmaker() as session:
-            return session.query(Chore).filter_by(name=task_name, tg_group_id=tg_group_id).first()
 
     def get_persons_by_tg_group_id(
         self,
-        tg_group_id: str
+        tg_group_id: int
     ) -> List[Person]:
         logger.info("Getting persons by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
             
-    def get_person_by_user_and_group(self, tg_user_id: str, tg_group_id: str):
+    def get_person_by_user_and_group(
+        self, 
+        tg_user_id: int, 
+        tg_group_id: int
+    ) -> Person | None:
+        logger.info("Getting person by user and group")
         try:
             with self._sessionmaker() as session:
                 return session.query(Person).filter_by(tg_user_id=tg_user_id, tg_group_id=tg_group_id).first()
-        except Exception as e:
-            print(f"Error in get_person_by_user_and_group: {e}")
+        except Exception:
+            logger.exception("Error in get_person_by_user_and_group")
             raise
         
     def delete_person_by_tg_user_id(
         self,
-        tg_user_id: str
+        tg_user_id: int
     ) -> None:
         logger.info("Deleting person by tg_user_id")
         with self._sessionmaker() as session:
@@ -105,6 +111,14 @@ class DBClient:
         logger.info("Getting chores by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Chore).filter_by(tg_group_id=tg_group_id).all()
+        
+    def get_chore_by_name_and_tg_group_id(
+        self, 
+        task_name: str, 
+        tg_group_id: str
+    ):
+        with self._sessionmaker() as session:
+            return session.query(Chore).filter_by(name=task_name, tg_group_id=tg_group_id).first()
         
     def update_chore_by_id(
         self,
