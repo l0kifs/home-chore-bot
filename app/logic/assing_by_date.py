@@ -2,6 +2,9 @@ import datetime
 from datetime import timedelta
 import random
 from typing import List
+
+from loguru import logger
+
 from clients.db_client import Chore, Person
 
 class ChoreDistributionService:
@@ -9,6 +12,7 @@ class ChoreDistributionService:
         pass
 
     def get_chores_due_today(self, all_chores: List[Chore]) -> List[Chore]:
+        logger.info("Getting chores due today")
         today_date = datetime.date.today()
         first_day_of_year = datetime.date(today_date.year, 1, 1)
         jan_1_weekday = first_day_of_year.weekday()
@@ -19,6 +23,7 @@ class ChoreDistributionService:
         return [chore for chore in all_chores if (day_of_year % chore.frequency.value) == 0]
 
     def assign_tasks(self, chores: List[Chore], persons: List[Person]):
+        logger.info("Assigning tasks")
         """Распределяет задачи по людям"""
         if not persons:
             return []

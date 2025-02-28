@@ -1,24 +1,23 @@
-import logging
+# import logging
 from datetime import timedelta, timezone, time
+
+from loguru import logger
+from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from telegram import BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
+
 from clients.db_client import  Chore, Person, DBClient
 from enums.complexity import Complexity
 from enums.frequency import Frequency
-from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from logic.assing_by_date import ChoreDistributionService
-
 
 
 ASK_NAME, ASK_COMPLEXITY, ASK_FREQUENCY, ASK_START_DATE = range(4)
 
-import logging
-from telegram import BotCommand
-from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters
 
 class TgBotClient:
     def __init__(self, token: str, db_url: str):
         self.db_client = DBClient(db_url)  # Initialize the database client
-        self._log = logging.getLogger(self.__class__.__name__)
+        # self._log = logging.getLogger(self.__class__.__name__)
         
         self.chore_service = ChoreDistributionService()  # Добавляем этот атрибут
 
@@ -37,11 +36,11 @@ class TgBotClient:
 
     def set_chat_id(self, chat_id: int) -> None:
         self._chat_id = chat_id
-        self._log.info(f"Chat ID set to {self._chat_id}")
+        logger.info(f"Chat ID set to {self._chat_id}")
 
     def _set_commands(self, application: Application) -> None:
         """Добавляет обработчики команд в приложение."""
-        self._log.info("Setting standalone commands...")
+        logger.info("Setting standalone commands...")
 
         commands = [
             {"command": "start", "callback": self._start_command},
@@ -56,7 +55,7 @@ class TgBotClient:
             application.add_handler(CommandHandler(cmd["command"], cmd["callback"]))
 
         # Добавляем обработчик диалога
-        self._log.info("Setting conversation handler for 'add_chore'...")
+        logger.info("Setting conversation handler for 'add_chore'...")
         conversation_handler = ConversationHandler(
             entry_points=[CommandHandler("add_chore", self.start_add_chore)],
             states={
@@ -69,11 +68,11 @@ class TgBotClient:
         application.add_handler(conversation_handler)
         application.add_handler(MessageHandler(filters.ALL, self.add_person_on_interaction))
 
-        self._log.info("All commands and handlers have been set.")
+        logger.info("All commands and handlers have been set.")
 
     async def _post_init(self, application: Application):
         """Устанавливает команды для бота после инициализации."""
-        self._log.info("Setting bot commands after initialization...")
+        logger.info("Setting bot commands after initialization...")
         commands = [
             BotCommand("start", "Стартовое сообщение бота"),
             BotCommand("message", "Отправить сообщение пользователю"),
@@ -83,13 +82,13 @@ class TgBotClient:
             BotCommand("edit_task", "Изменить задачу"),
         ]
         await application.bot.set_my_commands(commands)
-        self._log.info("Bot commands successfully set.")
+        logger.info("Bot commands successfully set.")
 
 
     def _set_job_queue(self, application: Application) -> None:
-        self._log.info("Setting job queue...")
+        logger.info("Setting job queue...")
         if not application.job_queue:
-            self._log.error("Job queue not found in bot. Exiting.")
+            logger.error("Job queue not found in bot. Exiting.")
             return
 
         jobs = [
@@ -106,7 +105,7 @@ class TgBotClient:
 
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         
-        self._log.info("Start command received.")
+        logger.info("Start command received.")
         
         if not update.effective_chat or not update.message:
             return
@@ -288,40 +287,40 @@ class TgBotClient:
             
     async def add_person_on_interaction(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Log initial trigger
-        self._log.info("Triggered add_person_on_interaction.")
+        logger.info("Triggered add_person_on_interaction.")
 
         # Ensure the user and chat exist
         if not update.effective_user or not update.effective_chat:
-            self._log.warning("No effective_user or effective_chat in update.")
+            logger.warning("No effective_user or effective_chat in update.")
             return
 
         # Extract user and group details
         tg_user_id = str(update.effective_user.id)  # User ID
         tg_group_id = str(update.effective_chat.id)  # Group ID
-        self._log.info(f"User ID: {tg_user_id}, Group ID: {tg_group_id}")
+        logger.info(f"User ID: {tg_user_id}, Group ID: {tg_group_id}")
 
         # Ensure it's a group or supergroup
         if update.effective_chat.type not in ["group", "supergroup"]:
-            self._log.info(f"Skipping non-group chat: {update.effective_chat.type}")
+            logger.info(f"Skipping non-group chat: {update.effective_chat.type}")
             return
 
         # Check if the person is already in the database
         existing_person = self.db_client.get_person_by_user_and_group(tg_user_id, tg_group_id)
         if existing_person:
-            self._log.info(f"User {tg_user_id} already exists in group {tg_group_id}. Skipping addition.")
+            logger.info(f"User {tg_user_id} already exists in group {tg_group_id}. Skipping addition.")
             return
 
         # Add the person to the database
         person = Person(tg_user_id=tg_user_id, tg_group_id=tg_group_id)
         try:
             self.db_client.add_person(person)
-            self._log.info(f"Successfully added user {tg_user_id} to group {tg_group_id}.")
+            logger.info(f"Successfully added user {tg_user_id} to group {tg_group_id}.")
         except Exception as e:
-            self._log.error(f"Error adding user {tg_user_id} to group {tg_group_id}: {e}")
+            logger.error(f"Error adding user {tg_user_id} to group {tg_group_id}: {e}")
 
 
     async def _message_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        self._log.info("Message command received.")
+        logger.info("Message command received.")
         if not update.effective_chat or not update.message or not update.effective_user:
             return
         if update.effective_chat.type in ['group', 'supergroup']:
@@ -329,10 +328,10 @@ class TgBotClient:
             await update.message.reply_text(f'{user.username} использовал команду /message')
     
     async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
-        self._log.info("Notify chores daily job started.")
+        logger.info("Notify chores daily job started.")
 
         if not self._chat_id:
-            self._log.error("Job context not found.")
+            logger.error("Job context not found.")
             return
 
         tg_group_id = str(self._chat_id)
@@ -394,6 +393,6 @@ class TgBotClient:
         await update.message.reply_text(message)
         
     def run(self):
-        self._log.info("Starting bot polling...")
+        logger.info("Starting bot polling...")
         self._bot.run_polling()
 

@@ -1,6 +1,7 @@
-import logging
+# import logging
 from typing import List
 
+from loguru import logger
 import sqlalchemy
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -33,7 +34,7 @@ class DBClient:
         self,
         db_url: str,
     ) -> None:
-        self._log = logging.getLogger(self.__class__.__name__)
+        # self._log = logging.getLogger(self.__class__.__name__)
 
         self._engine = create_engine(url=db_url, echo=False)
         Base.metadata.create_all(self._engine)
@@ -46,7 +47,7 @@ class DBClient:
             session.add(person)
             session.commit()
         except sqlalchemy.exc.IntegrityError:
-            self._log.warning(f"User {person.tg_user_id} is already in the database.")
+            logger.warning(f"User {person.tg_user_id} is already in the database.")
             session.rollback()
         finally:
             session.close()
@@ -55,7 +56,7 @@ class DBClient:
         self,
         tg_user_id: str
     ) -> Person:
-        self._log.info("Getting person by tg_user_id")
+        logger.info("Getting person by tg_user_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_user_id=tg_user_id).first()
         
@@ -67,7 +68,7 @@ class DBClient:
         self,
         tg_group_id: str
     ) -> List[Person]:
-        self._log.info("Getting persons by tg_group_id")
+        logger.info("Getting persons by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
             
@@ -83,7 +84,7 @@ class DBClient:
         self,
         tg_user_id: str
     ) -> None:
-        self._log.info("Deleting person by tg_user_id")
+        logger.info("Deleting person by tg_user_id")
         with self._sessionmaker() as session:
             session.query(Person).filter_by(tg_user_id=tg_user_id).delete()
             session.commit()
@@ -92,7 +93,7 @@ class DBClient:
         self,
         chore: Chore
     ) -> None:
-        self._log.info("Adding chore")
+        logger.info("Adding chore")
         with self._sessionmaker() as session:
             session.add(chore)
             session.commit()
@@ -101,7 +102,7 @@ class DBClient:
         self,
         tg_group_id: str
     ) -> List[Chore]:
-        self._log.info("Getting chores by tg_group_id")
+        logger.info("Getting chores by tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Chore).filter_by(tg_group_id=tg_group_id).all()
         
@@ -112,7 +113,7 @@ class DBClient:
         complexity: Complexity | None = None,
         frequency: Frequency | None = None
     ) -> None:
-        self._log.info("Updating chore by id")
+        logger.info("Updating chore by id")
         with self._sessionmaker() as session:
             chore = session.query(Chore).filter_by(id=chore_id).first()
             if name:
@@ -127,7 +128,7 @@ class DBClient:
         self,
         chore_id: int
     ) -> None:
-        self._log.info("Deleting chore by id")
+        logger.info("Deleting chore by id")
         with self._sessionmaker() as session:
             session.query(Chore).filter_by(id=chore_id).delete()
             session.commit()
