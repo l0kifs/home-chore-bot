@@ -27,8 +27,12 @@ class Person(Base):
 
 class Chore(Base):
     __tablename__ = 'chores'
+    # service fields
     id = Column(Integer, primary_key=True)
-    tg_group_id = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    # entry fields
+    tg_group_id = Column(Integer, nullable=False)
     name = Column(String, nullable=False)
     complexity = Column(sqlalchemy.Enum(Complexity), nullable=False)
     frequency = Column(sqlalchemy.Enum(Frequency), nullable=False)
@@ -39,14 +43,14 @@ class DBClient:
         self,
         db_url: str,
     ) -> None:
-        # self._log = logging.getLogger(self.__class__.__name__)
-
+        logger.info("Initializing db client")
         self._engine = create_engine(url=db_url, echo=False)
         Base.metadata.create_all(self._engine)
         self._sessionmaker = sessionmaker(bind=self._engine)
     
     
     def add_person(self, person: Person):
+        logger.info("Adding person")
         session = self._sessionmaker()
         try:
             session.add(person)
@@ -60,7 +64,7 @@ class DBClient:
     def get_person_by_tg_user_id(
         self,
         tg_user_id: int
-    ) -> Person:
+    ) -> Person | None:
         logger.info("Getting person by tg_user_id")
         with self._sessionmaker() as session:
             return session.query(Person).filter_by(tg_user_id=tg_user_id).first()
@@ -91,18 +95,32 @@ class DBClient:
         tg_user_id: int
     ) -> None:
         logger.info("Deleting person by tg_user_id")
-        with self._sessionmaker() as session:
-            session.query(Person).filter_by(tg_user_id=tg_user_id).delete()
-            session.commit()
+        session = self._sessionmaker()
+        try:
+            person = session.query(Person).filter_by(tg_user_id=tg_user_id).first()
+            if person:
+                session.delete(person)
+                session.commit()
+        except Exception:
+            logger.exception("Error in delete_person_by_tg_user_id")
+            session.rollback()
+        finally:
+            session.close()
     
     def add_chore(
         self,
         chore: Chore
     ) -> None:
         logger.info("Adding chore")
-        with self._sessionmaker() as session:
+        session = self._sessionmaker()
+        try:
             session.add(chore)
             session.commit()
+        except sqlalchemy.exc.IntegrityError:
+            logger.warning(f"Chore {chore.name} is already in the database.")
+            session.rollback()
+        finally:
+            session.close()
     
     def get_chores_by_tg_group_id(
         self,
@@ -116,7 +134,8 @@ class DBClient:
         self, 
         task_name: str, 
         tg_group_id: str
-    ):
+    ) -> Chore | None:
+        logger.info("Getting chore by name and tg_group_id")
         with self._sessionmaker() as session:
             return session.query(Chore).filter_by(name=task_name, tg_group_id=tg_group_id).first()
         
@@ -128,7 +147,8 @@ class DBClient:
         frequency: Frequency | None = None
     ) -> None:
         logger.info("Updating chore by id")
-        with self._sessionmaker() as session:
+        session = self._sessionmaker()
+        try:
             chore = session.query(Chore).filter_by(id=chore_id).first()
             if name:
                 chore.name = name  # type: ignore
@@ -137,12 +157,25 @@ class DBClient:
             if frequency:
                 chore.frequency = frequency  # type: ignore
             session.commit()
+        except Exception:
+            logger.exception("Error in update_chore_by_id")
+            session.rollback()
+        finally:
+            session.close()
     
     def delete_chore_by_id(
         self,
         chore_id: int
     ) -> None:
         logger.info("Deleting chore by id")
-        with self._sessionmaker() as session:
-            session.query(Chore).filter_by(id=chore_id).delete()
-            session.commit()
+        session = self._sessionmaker()
+        try:
+            chore = session.query(Chore).filter_by(id=chore_id).first()
+            if chore:
+                session.delete(chore)
+                session.commit()
+        except Exception:
+            logger.exception("Error in delete_chore_by_id")
+            session.rollback()
+        finally:
+            session.close()

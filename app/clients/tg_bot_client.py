@@ -19,10 +19,16 @@ class TgBotClient:
         self._bot: Application = (
             Application.builder()
             .token(token)
+            .post_init(self.post_init)
             .build()
         )
 
         self._bot.add_handler(CommandHandler("add_person", self.add_person_command))
+
+    async def post_init(self, application: Application) -> None:
+        await application.bot.set_my_commands([
+            BotCommand("add_person", "Register yourself in the group")
+        ])
 
     async def add_person_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("Received add_person command")
