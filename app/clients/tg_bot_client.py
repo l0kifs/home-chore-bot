@@ -57,7 +57,7 @@ class TgBotClient:
                 )
 
                 await context.bot.send_message(
-                    chat_id=update.message.from_user.id,
+                    chat_id=user_id,
                     text="Привет! Я бот Антисрач. Расскажу, что делать, чтобы не зарасти говной."
                 )
 
