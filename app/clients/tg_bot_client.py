@@ -12,10 +12,30 @@ import random
 import string
 
 
+def add_default_chores(db_client: DBClient):
+    chores = [
+        Chore(name="Вынести мусор", frequency=Frequency.EVERY_3_DAYS, complexity=Complexity.MEDIUM),
+        Chore(name="Почистить зубы кошкам", frequency=Frequency.DAILY, complexity=Complexity.EASY),
+        Chore(name="Убрать лотки", frequency=Frequency.DAILY, complexity=Complexity.MEDIUM),
+        Chore(name="Сменить постельное белье", frequency=Frequency.WEEKLY, complexity=Complexity.HARD),
+        Chore(name="Помыть робососа", frequency=Frequency.WEEKLY, complexity=Complexity.HARDEST),
+        Chore(name="Помыть стекла", frequency=Frequency.EVERY_2_MONTHS, complexity=Complexity.HARDEST),
+        Chore(name="Помыть холодильник", frequency=Frequency.WEEKLY, complexity=Complexity.HARDEST),
+        Chore(name="Помыть душ", frequency=Frequency.WEEKLY, complexity=Complexity.HARD),
+        Chore(name="Помыть унитаз", frequency=Frequency.WEEKLY, complexity=Complexity.EASY),
+        Chore(name="Протереть поверхности на кухне", frequency=Frequency.EVERY_3_DAYS, complexity=Complexity.MEDIUM),
+        Chore(name="Постирать вещи", frequency=Frequency.EVERY_3_DAYS, complexity=Complexity.MEDIUM),
+        Chore(name="Собрать мусор", frequency=Frequency.DAILY, complexity=Complexity.EASY),
+        Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=Complexity.EASY), 
+    ]   
+    for chore in chores:
+        db_client.add_chore(chore)
+
 class TgBotClient:
     def __init__(self, token: str, db_url: str):
         logger.info("Initializing bot client")
         self.db_client = DBClient(db_url)
+        add_default_chores(self.db_client)
         self.chore_service = ChoreDistributionService()
 
         self._bot: Application = (
@@ -24,7 +44,7 @@ class TgBotClient:
             .post_init(self.post_init)
             .build()
         )
-        self._set_commands(self._bot)  # ВАЖНО! Теперь вызываем функцию добавления команд
+        self._set_commands(self._bot)  
         self._set_job_queue(self._bot)
 
         
@@ -35,6 +55,7 @@ class TgBotClient:
         application.add_handler(CommandHandler("add_chore", self.create_chore_command))
         application.add_handler(CommandHandler("invite", self.invite_command))
         application.add_handler(CommandHandler("start", self.start_command))
+        
     async def post_init(self, application: Application) -> None:
         await application.bot.set_my_commands([
             BotCommand("add_chore", "Добавление задачи"),
@@ -42,7 +63,6 @@ class TgBotClient:
             BotCommand("start", "начало работы с ботом")
         ])
         
-            # ID чата, куда бот отправит сообщение (замени на нужный)
         chat_id = "624165496"
 
         try:
@@ -50,10 +70,9 @@ class TgBotClient:
             logger.info("Startup message sent successfully.")
         except Exception as e:
             logger.error(f"Failed to send startup message: {e}")
-    
-    
-# ! Метод для создания задач:
+       
     async def create_chore_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Method create chore"""
         logger.info('Start creating chore')
 
         if not context.args or len(context.args) < 3:
@@ -80,7 +99,6 @@ class TgBotClient:
             logger.error(f"Error adding chore: {e}")
             await update.message.reply_text("Произошла ошибка при добавлении задачи.")
 
-#  !  Метод для создания ссылки приглашения:
     async def invite_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.message.from_user
         invite_code = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
@@ -94,17 +112,13 @@ class TgBotClient:
 
         logger.info(f"Generated invite link for {user.id}: {invite_link}")
 
-
-# ! Метод для регистрации в боте
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.message.from_user
 
-        # Проверяем, есть ли аргумент в команде (например, start=addme_abc123)
         if context.args and context.args[0].startswith("addme_"):
-            invite_code = context.args[0][6:]  # Вырезаем код после "addme_"
+            invite_code = context.args[0][6:]  
             logger.info(f"User {user.id} joined with invite code: {invite_code}")
 
-        # Проверяем, есть ли уже этот пользователь в базе
         session = self.db_client._sessionmaker()
         existing_person = session.query(Person).filter_by(tg_user_id=user.id).first()
         session.close()
@@ -112,14 +126,12 @@ class TgBotClient:
         if existing_person:
             await update.message.reply_text(f"Ты уже в системе, @{user.username}! 😉")
         else:
-            # Добавляем нового пользователя
             person = Person(tg_user_id=user.id)
             self.db_client.add_person(person)
             await update.message.reply_text(f"✅ Ты успешно зарегистрирован в системе, @{user.username}!")
 
             logger.info(f"User {user.id} added to database.")
             
-# ! Методы распределения задач между пользователями: 
     def _set_job_queue(self, application: Application) -> None:
         """Настраивает автоматические задачи для бота."""
         logger.info("Setting job queue...")
@@ -127,11 +139,10 @@ class TgBotClient:
             logger.error("Job queue not found in bot. Exiting.")
             return
 
-        # Настраиваем ежедневную отправку задач
         application.job_queue.run_repeating(
             callback=self._notify_chores_daily, 
             interval=timedelta(days=1),
-            first=time(hour=14, minute=35, tzinfo=timezone.utc),
+            first=time(hour=3, minute=8, tzinfo=timezone.utc),
             name="notify_chores_daily"
         )
 
@@ -148,7 +159,6 @@ class TgBotClient:
             logger.warning("Нет пользователей или задач для распределения.")
             return
 
-        # Получаем задачи, которые должны быть выполнены сегодня
         chore_service = ChoreDistributionService()
         today_chores = chore_service.get_chores_due_today(all_chores)
 
@@ -156,7 +166,6 @@ class TgBotClient:
             logger.info("Сегодня нет задач для выполнения.")
             return
 
-        # Распределяем задачи только из списка today's chores
         tasks_by_person = chore_service.assign_tasks(today_chores, persons)
 
         for entry in tasks_by_person:
@@ -164,14 +173,12 @@ class TgBotClient:
             tasks = entry["tasks"]
 
             try:
-                # Получаем информацию о пользователе
                 chat = await context.bot.get_chat(person.tg_user_id)
                 user_display_name = f"@{chat.username}" if chat.username else chat.first_name
             except Exception as e:
                 logger.error(f"Не удалось получить имя пользователя {person.tg_user_id}: {e}")
-                user_display_name = f"ID {person.tg_user_id}"  # Фолбэк на ID, если имя не найдено
+                user_display_name = f"ID {person.tg_user_id}" 
 
-            # Формируем список задач
             if tasks:
                 task_list = "\n".join([f"- {task['name']} (Сложность: {task['complexity']})" for task in tasks])
                 message = f"👋 {user_display_name}, вот твои задачи на сегодня:\n{task_list}"
@@ -183,7 +190,6 @@ class TgBotClient:
                 logger.info(f"Задачи отправлены {user_display_name}")
             except Exception as e:
                 logger.error(f"Не удалось отправить сообщение {person.tg_user_id}: {e}")
-
 
     def run(self):
         logger.info("Starting bot")
