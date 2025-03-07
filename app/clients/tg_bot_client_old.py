@@ -86,23 +86,22 @@ ASK_NAME, ASK_COMPLEXITY, ASK_FREQUENCY, ASK_START_DATE = range(4)
 #         logger.info("Bot commands successfully set.")
 
 
-#     def _set_job_queue(self, application: Application) -> None:
-#         logger.info("Setting job queue...")
-#         if not application.job_queue:
-#             logger.error("Job queue not found in bot. Exiting.")
-#             return
+    # def _set_job_queue(self, application: Application) -> None:
+    #     logger.info("Setting job queue...")
+    #     if not application.job_queue:
+    #         logger.error("Job queue not found in bot. Exiting.")
+    #         return
 
-#         jobs = [
-#             # {"name": "notify_chores_daily", "callback": self._notify_chores_daily, "interval": timedelta(days=1), "first": timedelta(seconds=5)}
-#             {"name": "notify_chores_daily", "callback": self._notify_chores_daily, "interval": timedelta(days=1), "first": time(hour=12, minute=15, tzinfo=timezone.utc)},
-#         ]
-#         for job in jobs:
-#             application.job_queue.run_repeating(
-#             callback=job["callback"], 
-#             interval=job["interval"],
-#             first=job["first"],
-#             name=job["name"]
-#         )
+    #     jobs = [
+    #         {"name": "notify_chores_daily", "callback": self._notify_chores_daily, "interval": timedelta(days=1), "first": time(hour=12, minute=15, tzinfo=timezone.utc)},
+    #     ]
+    #     for job in jobs:
+    #         application.job_queue.run_repeating(
+    #         callback=job["callback"], 
+    #         interval=job["interval"],
+    #         first=job["first"],
+    #         name=job["name"]
+    #     )
 
 #     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         

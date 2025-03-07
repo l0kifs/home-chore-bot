@@ -8,6 +8,8 @@ from clients.db_client import  Chore, Person, DBClient
 from enums.complexity import Complexity
 from enums.frequency import Frequency
 from logic.assing_by_date import ChoreDistributionService
+import random
+import string
 
 
 class TgBotClient:
@@ -22,45 +24,169 @@ class TgBotClient:
             .post_init(self.post_init)
             .build()
         )
+        self._set_commands(self._bot)  # ВАЖНО! Теперь вызываем функцию добавления команд
+        self._set_job_queue(self._bot)
 
-        self._bot.add_handler(CommandHandler("add_person", self.add_person_command))
+        
+    def _set_commands(self, application: Application) -> None:
 
+        logger.info("Setting standalone commands...")
+        
+        application.add_handler(CommandHandler("add_chore", self.create_chore_command))
+        application.add_handler(CommandHandler("invite", self.invite_command))
+        application.add_handler(CommandHandler("start", self.start_command))
     async def post_init(self, application: Application) -> None:
         await application.bot.set_my_commands([
-            BotCommand("add_person", "Register yourself in the group")
+            BotCommand("add_chore", "Добавление задачи"),
+            BotCommand("invite", "добвление челика"),
+            BotCommand("start", "начало работы с ботом")
         ])
+        
+            # ID чата, куда бот отправит сообщение (замени на нужный)
+        chat_id = "624165496"
 
-    async def add_person_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        logger.info("Received add_person command")
-        if not update.effective_chat or not update.message or not update.message.from_user:
-            return
-        if update.effective_chat.type in ['group', 'supergroup']:
-            chat_id = update.effective_chat.id
-            user_id = update.message.from_user.id
+        try:
+            await application.bot.send_message(chat_id=chat_id, text="Бот запущен и готов к работе!")
+            logger.info("Startup message sent successfully.")
+        except Exception as e:
+            logger.error(f"Failed to send startup message: {e}")
+    
+    
+# ! Метод для создания задач:
+    async def create_chore_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        logger.info('Start creating chore')
 
-            existing_person = self.db_client.get_person_by_user_and_group(
-                tg_group_id=chat_id,
-                tg_user_id=user_id
+        if not context.args or len(context.args) < 3:
+            await update.message.reply_text(
+                "Используй формат: /add_chore <название> <сложность> <частота>\n"
+                "Например: /add_chore Мыть_посуду 2 7"
             )
-            if existing_person:
-                await update.message.reply_text(
-                    text="Вы уже зарегистрированы в группе!"
-                )
-            else:
-                new_person = Person(
-                    tg_group_id=chat_id,
-                    tg_user_id=user_id
-                )
-                self.db_client.add_person(new_person)
-                await update.message.reply_text(
-                    text="Вы успешно зарегистрированы в группе!"
-                )
+            return
 
-                await context.bot.send_message(
-                    chat_id=update.message.from_user.id,
-                    text="Привет! Я бот Антисрач. Расскажу, что делать, чтобы не зарасти говной."
-                )
+        try:
+            name = context.args[0]
+            complexity = Complexity(int(context.args[1]))
+            frequency = Frequency(int(context.args[2]))
+
+            chore = Chore(name=name, complexity=complexity, frequency=frequency)
+            self.db_client.add_chore(chore)
+
+            await update.message.reply_text(f"Задача '{name}' добавлена!")
+            logger.info(f"Chore '{name}' added successfully.")
+
+        except ValueError:
+            await update.message.reply_text("Ошибка! Сложность и частота должны быть числами из списка доступных значений.")
+        except Exception as e:
+            logger.error(f"Error adding chore: {e}")
+            await update.message.reply_text("Произошла ошибка при добавлении задачи.")
+
+#  !  Метод для создания ссылки приглашения:
+    async def invite_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.message.from_user
+        invite_code = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        
+        invite_link = f"https://t.me/{context.bot.username}?start=addme_{invite_code}"
+
+        await update.message.reply_text(
+            f"🚀 Отправь эту ссылку другу: {invite_link}\n"
+            "Когда он нажмёт, бот его зарегистрирует!"
+        )
+
+        logger.info(f"Generated invite link for {user.id}: {invite_link}")
+
+
+# ! Метод для регистрации в боте
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.message.from_user
+
+        # Проверяем, есть ли аргумент в команде (например, start=addme_abc123)
+        if context.args and context.args[0].startswith("addme_"):
+            invite_code = context.args[0][6:]  # Вырезаем код после "addme_"
+            logger.info(f"User {user.id} joined with invite code: {invite_code}")
+
+        # Проверяем, есть ли уже этот пользователь в базе
+        session = self.db_client._sessionmaker()
+        existing_person = session.query(Person).filter_by(tg_user_id=user.id).first()
+        session.close()
+
+        if existing_person:
+            await update.message.reply_text(f"Ты уже в системе, @{user.username}! 😉")
+        else:
+            # Добавляем нового пользователя
+            person = Person(tg_user_id=user.id)
+            self.db_client.add_person(person)
+            await update.message.reply_text(f"✅ Ты успешно зарегистрирован в системе, @{user.username}!")
+
+            logger.info(f"User {user.id} added to database.")
+            
+# ! Методы распределения задач между пользователями: 
+    def _set_job_queue(self, application: Application) -> None:
+        """Настраивает автоматические задачи для бота."""
+        logger.info("Setting job queue...")
+        if not application.job_queue:
+            logger.error("Job queue not found in bot. Exiting.")
+            return
+
+        # Настраиваем ежедневную отправку задач
+        application.job_queue.run_repeating(
+            callback=self._notify_chores_daily, 
+            interval=timedelta(days=1),
+            first=time(hour=14, minute=35, tzinfo=timezone.utc),
+            name="notify_chores_daily"
+        )
+
+    async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
+        """Распределяет и отправляет пользователям их задачи каждый день."""
+        logger.info("Началась автоматическая рассылка задач.")
+
+        session = self.db_client._sessionmaker()
+        persons = session.query(Person).all()
+        all_chores = session.query(Chore).all()
+        session.close()
+
+        if not persons or not all_chores:
+            logger.warning("Нет пользователей или задач для распределения.")
+            return
+
+        # Получаем задачи, которые должны быть выполнены сегодня
+        chore_service = ChoreDistributionService()
+        today_chores = chore_service.get_chores_due_today(all_chores)
+
+        if not today_chores:
+            logger.info("Сегодня нет задач для выполнения.")
+            return
+
+        # Распределяем задачи только из списка today's chores
+        tasks_by_person = chore_service.assign_tasks(today_chores, persons)
+
+        for entry in tasks_by_person:
+            person = entry["person"]
+            tasks = entry["tasks"]
+
+            try:
+                # Получаем информацию о пользователе
+                chat = await context.bot.get_chat(person.tg_user_id)
+                user_display_name = f"@{chat.username}" if chat.username else chat.first_name
+            except Exception as e:
+                logger.error(f"Не удалось получить имя пользователя {person.tg_user_id}: {e}")
+                user_display_name = f"ID {person.tg_user_id}"  # Фолбэк на ID, если имя не найдено
+
+            # Формируем список задач
+            if tasks:
+                task_list = "\n".join([f"- {task['name']} (Сложность: {task['complexity']})" for task in tasks])
+                message = f"👋 {user_display_name}, вот твои задачи на сегодня:\n{task_list}"
+            else:
+                message = f"🎉 {user_display_name}, у тебя сегодня нет задач!"
+
+            try:
+                await context.bot.send_message(chat_id=person.tg_user_id, text=message)
+                logger.info(f"Задачи отправлены {user_display_name}")
+            except Exception as e:
+                logger.error(f"Не удалось отправить сообщение {person.tg_user_id}: {e}")
+
 
     def run(self):
         logger.info("Starting bot")
         self._bot.run_polling()
+
+# # В личных сообщениях с ботом можно добавлять задачи и редактировать, в общем чате будет приходить оповещение об изменениях в списке задач

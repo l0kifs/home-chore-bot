@@ -14,16 +14,11 @@ Base = declarative_base()
 
 
 class Person(Base):
-    __tablename__ = 'persons'
-    # service fields
+    __tablename__ = "persons"
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
-    # entry fields
     tg_user_id = Column(Integer, unique=True, nullable=False)
-    tg_group_id = Column(Integer, unique=False, nullable=False)
-
-
 
 class Chore(Base):
     __tablename__ = 'chores'
@@ -32,7 +27,6 @@ class Chore(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
     # entry fields
-    tg_group_id = Column(Integer, nullable=False)
     name = Column(String, nullable=False)
     complexity = Column(sqlalchemy.Enum(Complexity), nullable=False)
     frequency = Column(sqlalchemy.Enum(Frequency), nullable=False)
@@ -59,53 +53,7 @@ class DBClient:
             logger.warning(f"User {person.tg_user_id} is already in the database.")
             session.rollback()
         finally:
-            session.close()
-            
-    def get_person_by_tg_user_id(
-        self,
-        tg_user_id: int
-    ) -> Person | None:
-        logger.info("Getting person by tg_user_id")
-        with self._sessionmaker() as session:
-            return session.query(Person).filter_by(tg_user_id=tg_user_id).first()
-
-    def get_persons_by_tg_group_id(
-        self,
-        tg_group_id: int
-    ) -> List[Person]:
-        logger.info("Getting persons by tg_group_id")
-        with self._sessionmaker() as session:
-            return session.query(Person).filter_by(tg_group_id=tg_group_id).all()
-            
-    def get_person_by_user_and_group(
-        self, 
-        tg_user_id: int, 
-        tg_group_id: int
-    ) -> Person | None:
-        logger.info("Getting person by user and group")
-        try:
-            with self._sessionmaker() as session:
-                return session.query(Person).filter_by(tg_user_id=tg_user_id, tg_group_id=tg_group_id).first()
-        except Exception:
-            logger.exception("Error in get_person_by_user_and_group")
-            raise
-        
-    def delete_person_by_tg_user_id(
-        self,
-        tg_user_id: int
-    ) -> None:
-        logger.info("Deleting person by tg_user_id")
-        session = self._sessionmaker()
-        try:
-            person = session.query(Person).filter_by(tg_user_id=tg_user_id).first()
-            if person:
-                session.delete(person)
-                session.commit()
-        except Exception:
-            logger.exception("Error in delete_person_by_tg_user_id")
-            session.rollback()
-        finally:
-            session.close()
+            session.close()      
     
     def add_chore(
         self,
@@ -121,61 +69,4 @@ class DBClient:
             session.rollback()
         finally:
             session.close()
-    
-    def get_chores_by_tg_group_id(
-        self,
-        tg_group_id: str
-    ) -> List[Chore]:
-        logger.info("Getting chores by tg_group_id")
-        with self._sessionmaker() as session:
-            return session.query(Chore).filter_by(tg_group_id=tg_group_id).all()
-        
-    def get_chore_by_name_and_tg_group_id(
-        self, 
-        task_name: str, 
-        tg_group_id: str
-    ) -> Chore | None:
-        logger.info("Getting chore by name and tg_group_id")
-        with self._sessionmaker() as session:
-            return session.query(Chore).filter_by(name=task_name, tg_group_id=tg_group_id).first()
-        
-    def update_chore_by_id(
-        self,
-        chore_id: int,
-        name: str | None = None,
-        complexity: Complexity | None = None,
-        frequency: Frequency | None = None
-    ) -> None:
-        logger.info("Updating chore by id")
-        session = self._sessionmaker()
-        try:
-            chore = session.query(Chore).filter_by(id=chore_id).first()
-            if name:
-                chore.name = name  # type: ignore
-            if complexity:
-                chore.complexity = complexity  # type: ignore
-            if frequency:
-                chore.frequency = frequency  # type: ignore
-            session.commit()
-        except Exception:
-            logger.exception("Error in update_chore_by_id")
-            session.rollback()
-        finally:
-            session.close()
-    
-    def delete_chore_by_id(
-        self,
-        chore_id: int
-    ) -> None:
-        logger.info("Deleting chore by id")
-        session = self._sessionmaker()
-        try:
-            chore = session.query(Chore).filter_by(id=chore_id).first()
-            if chore:
-                session.delete(chore)
-                session.commit()
-        except Exception:
-            logger.exception("Error in delete_chore_by_id")
-            session.rollback()
-        finally:
-            session.close()
+
