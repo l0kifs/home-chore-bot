@@ -17,7 +17,7 @@ def chore_distribution_service():
 def test_get_chores_due_today(chore_distribution_service, day_of_year, frequency, expected):
     today_date = date(2025, 1, day_of_year)
 
-    chore1 = Chore(name='chore1', frequency=frequency, complexity=Complexity.EASY, tg_group_id='group1')
+    chore1 = Chore(name='chore1', frequency=frequency, complexity=Complexity.EASY)
     all_chores = [chore1]
 
     with patch("app.logic.assing_by_date.datetime.date") as mock_date:
@@ -28,12 +28,12 @@ def test_get_chores_due_today(chore_distribution_service, day_of_year, frequency
     assert len(result) == expected
 
 def test_assign_tasks(chore_distribution_service):
-    person1 = Person(tg_user_id='user1', tg_group_id='group1')
-    person2 = Person(tg_user_id='user2', tg_group_id='group1')
+    person1 = Person(tg_user_id='user1')
+    person2 = Person(tg_user_id='user2')
     persons = [person1, person2]
 
-    chore1 = Chore(name='chore1', complexity=Complexity.EASY, frequency=Frequency.DAILY, tg_group_id='group1')
-    chore2 = Chore(name='chore2', complexity=Complexity.HARD, frequency=Frequency.WEEKLY, tg_group_id='group1')
+    chore1 = Chore(name='chore1', complexity=Complexity.EASY, frequency=Frequency.DAILY)
+    chore2 = Chore(name='chore2', complexity=Complexity.HARD, frequency=Frequency.WEEKLY)
     chores = [chore1, chore2]
 
     result = chore_distribution_service.assign_tasks(chores, persons)
