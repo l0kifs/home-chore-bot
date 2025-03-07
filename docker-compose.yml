@@ -6,4 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: home_chore_bot
+    environment:
+      - TELEGRAM_BOT_TOKEN
+      - DB_URL
     restart: unless-stopped
