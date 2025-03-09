@@ -69,4 +69,16 @@ class DBClient:
             session.rollback()
         finally:
             session.close()
-
+            
+    def get_chore(
+        self, 
+        name: str
+    ):
+        logger.info("Getting chore")
+        session = self._sessionmaker()
+        try:
+            chore = session.query(Chore).filter_by(name=name).first()
+            return chore
+        finally:
+            session.close()
+            

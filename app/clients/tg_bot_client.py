@@ -29,7 +29,8 @@ def add_default_chores(db_client: DBClient):
         Chore(name="Помыть посуду", frequency=Frequency.DAILY, complexity=Complexity.EASY), 
     ]   
     for chore in chores:
-        db_client.add_chore(chore)
+            if not db_client.get_chore(chore.name):  # Check if chore exists
+                db_client.add_chore(chore)
 
 class TgBotClient:
     def __init__(self, token: str, db_url: str):
@@ -142,7 +143,7 @@ class TgBotClient:
         application.job_queue.run_repeating(
             callback=self._notify_chores_daily, 
             interval=timedelta(days=1),
-            first=time(hour=3, minute=8, tzinfo=timezone.utc),
+            first=time(hour=17, minute=54, tzinfo=timezone.utc),
             name="notify_chores_daily"
         )
 
