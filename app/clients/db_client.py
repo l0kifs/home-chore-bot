@@ -4,21 +4,44 @@ from typing import List
 
 from loguru import logger
 import sqlalchemy
-from sqlalchemy import Column, DateTime, Integer, String, create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, DateTime, Integer, String, create_engine, ForeignKey, Table, engine
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 
 from enums.complexity import Complexity
 from enums.frequency import Frequency
 
 Base = declarative_base()
+# Base.metadata.create_all(engine, checkfirst=True)
 
+
+person_group_table = Table(
+    'person_group',
+    Base.metadata,
+    Column('person_id', Integer, ForeignKey('persons.id')),
+    Column('group_id', Integer, ForeignKey('groups.id'))
+)
 
 class Person(Base):
     __tablename__ = "persons"
+    
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
     tg_user_id = Column(Integer, unique=True, nullable=False)
+
+    person_groups = relationship("Group", secondary=person_group_table, back_populates="members")
+
+class Group(Base):
+    __tablename__ = "groups"  # Остается, но атрибут изменяем
+    
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    name = Column(String, unique=True, nullable=False)
+    invite_code = Column(String, unique=True)
+
+    members = relationship("Person", secondary=person_group_table, back_populates="person_groups")
+
 
 class Chore(Base):
     __tablename__ = 'chores'
@@ -81,4 +104,5 @@ class DBClient:
             return chore
         finally:
             session.close()
+        
             

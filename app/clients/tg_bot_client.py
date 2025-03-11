@@ -4,12 +4,14 @@ from loguru import logger
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from telegram import BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
 
-from clients.db_client import  Chore, Person, DBClient
+from clients.db_client import  Chore, Person, DBClient, Group, person_group_table
 from enums.complexity import Complexity
 from enums.frequency import Frequency
 from logic.assing_by_date import ChoreDistributionService
 import random
 import string
+from urllib.parse import quote
+
 
 
 def add_default_chores(db_client: DBClient):
@@ -54,14 +56,15 @@ class TgBotClient:
         logger.info("Setting standalone commands...")
         
         application.add_handler(CommandHandler("add_chore", self.create_chore_command))
-        application.add_handler(CommandHandler("invite", self.invite_command))
+        application.add_handler(CommandHandler("create_group", self.create_group_command))
         application.add_handler(CommandHandler("start", self.start_command))
         
     async def post_init(self, application: Application) -> None:
         await application.bot.set_my_commands([
             BotCommand("add_chore", "Добавление задачи"),
             BotCommand("invite", "добвление челика"),
-            BotCommand("start", "начало работы с ботом")
+            BotCommand("start", "начало работы с ботом"),
+            BotCommand("create_group","Создать группу")
         ])
         
         chat_id = "624165496"
@@ -100,39 +103,19 @@ class TgBotClient:
             logger.error(f"Error adding chore: {e}")
             await update.message.reply_text("Произошла ошибка при добавлении задачи.")
 
-    async def invite_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.message.from_user
-        invite_code = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    # async def invite_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #     user = update.message.from_user
+    #     invite_code = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
         
-        invite_link = f"https://t.me/{context.bot.username}?start=addme_{invite_code}"
+    #     invite_link = f"https://t.me/{context.bot.username}?start=addme_{invite_code}"
 
-        await update.message.reply_text(
-            f"🚀 Отправь эту ссылку другу: {invite_link}\n"
-            "Когда он нажмёт, бот его зарегистрирует!"
-        )
+    #     await update.message.reply_text(
+    #         f"🚀 Отправь эту ссылку другу: {invite_link}\n"
+    #         "Когда он нажмёт, бот его зарегистрирует!"
+    #     )
 
-        logger.info(f"Generated invite link for {user.id}: {invite_link}")
+    #     logger.info(f"Generated invite link for {user.id}: {invite_link}")
 
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.message.from_user
-
-        if context.args and context.args[0].startswith("addme_"):
-            invite_code = context.args[0][6:]  
-            logger.info(f"User {user.id} joined with invite code: {invite_code}")
-
-        session = self.db_client._sessionmaker()
-        existing_person = session.query(Person).filter_by(tg_user_id=user.id).first()
-        session.close()
-
-        if existing_person:
-            await update.message.reply_text(f"Ты уже в системе, @{user.username}! 😉")
-        else:
-            person = Person(tg_user_id=user.id)
-            self.db_client.add_person(person)
-            await update.message.reply_text(f"✅ Ты успешно зарегистрирован в системе, @{user.username}!")
-
-            logger.info(f"User {user.id} added to database.")
-            
     def _set_job_queue(self, application: Application) -> None:
         """Настраивает автоматические задачи для бота."""
         logger.info("Setting job queue...")
@@ -191,7 +174,76 @@ class TgBotClient:
                 logger.info(f"Задачи отправлены {user_display_name}")
             except Exception as e:
                 logger.error(f"Не удалось отправить сообщение {person.tg_user_id}: {e}")
+                
+    async def create_group_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Создание новой группы с ссылкой-приглашением"""
+        if not context.args:
+            await update.message.reply_text("Используй: /create_group <название>")
+            return
+        
+        group_name = " ".join(context.args)
+        invite_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+        
+        session = self.db_client._sessionmaker()
+        existing_group = session.query(Group).filter_by(name=group_name).first()
+        
+        if existing_group:
+            await update.message.reply_text("Группа с таким названием уже существует!")
+            session.close()
+            return
+        
+        new_group = Group(name=group_name, invite_code=invite_code)
+        session.add(new_group)
+        session.commit()
+        ins = person_group_table.insert().values(person_id=update.effective_user.id, group_id=new_group.id)
+        session.execute(ins)
+        session.commit()
+        
+        # Создаем ссылку
+        base_url = "https://t.me/?start="
+        invite_link = base_url + quote(f"join_{invite_code}")
 
+        await update.message.reply_text(
+            f"✅ Группа '{group_name}' создана!\n🔗 Ссылка приглашения: {invite_link}"
+        )
+        logger.info(f"Group '{group_name}' created with invite link {invite_link}")
+        session.close()
+
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Обработчик команды /start с кодом приглашения"""
+            args = context.args
+            if args and args[0].startswith("join_"):
+                invite_code = args[0][5:]  # убираем "join_"
+                
+                session = self.db_client._sessionmaker()
+                group = session.query(Group).filter_by(invite_code=invite_code).first()
+                
+                if group:
+                    tg_user_id = update.message.from_user.id
+                    # username = update.message.from_user.username or update.message.from_user.full_name
+                    
+                    # Проверяем, не в группе ли уже
+                    existing_member = session.query(Person).filter_by(tg_user_id=tg_user_id, groups=group.id).first()
+                    if existing_member:
+                        await update.message.reply_text("Ты уже в этой группе!")
+                        session.close()
+                        return
+
+                    # Добавляем в группу
+                    new_member = Person(tg_user_id=tg_user_id, username=username)
+                    new_member.groups.append(group) 
+                    session.add(new_member)
+                    session.commit()
+
+                    await update.message.reply_text(f"🎉 Добро пожаловать в '{group.name}'!")
+                    logger.info(f"User {tg_user_id} joined group '{group.name}' using invite code {invite_code}")
+                else:
+                    await update.message.reply_text("❌ Неверный код приглашения!")
+                
+                session.close()
+            else:
+                await update.message.reply_text("Привет! Я бот 🤖. Используй команды, чтобы начать.")
+                
     def run(self):
         logger.info("Starting bot")
         self._bot.run_polling()
