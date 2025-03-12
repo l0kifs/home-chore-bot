@@ -4,7 +4,7 @@ from typing import List
 
 from loguru import logger
 import sqlalchemy
-from sqlalchemy import Column, DateTime, Integer, String, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, create_engine, exists
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from enums.complexity import Complexity
@@ -22,15 +22,19 @@ class Person(Base):
 
 class Chore(Base):
     __tablename__ = 'chores'
-    # service fields
+    
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
-    # entry fields
+    
     name = Column(String, nullable=False)
     complexity = Column(sqlalchemy.Enum(Complexity), nullable=False)
     frequency = Column(sqlalchemy.Enum(Frequency), nullable=False)
-
+    
+class TaskSent(Base):
+    __tablename__ = 'sent_tasks'
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
 class DBClient:
     def __init__(
@@ -82,3 +86,28 @@ class DBClient:
         finally:
             session.close()
             
+    def was_task_sent_today(self) -> bool:
+        logger.info("Checking if a task was sent today")
+        session = self._sessionmaker()
+        try:
+            task_exist = session.query(
+                exists().where(TaskSent.created_at >= datetime.now(UTC).date())
+            ).scalar()
+            return task_exist
+        finally:
+            session.close()
+
+    def mark_task_as_sent(self) -> None:
+        """Marks that a task  sent today by inserting a new record."""
+        logger.info("Marking task as sent")
+        session = self._sessionmaker()
+        try:
+            sent_task = TaskSent()
+            session.add(sent_task)
+            session.commit()
+            logger.info("Task successfully marked as sent")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error marking task as sent: {e}")
+        finally:
+            session.close()

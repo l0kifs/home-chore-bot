@@ -1,10 +1,10 @@
-from datetime import timedelta, timezone, time
+from datetime import timedelta, timezone, time, datetime
 
 from loguru import logger
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from telegram import BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
 
-from clients.db_client import  Chore, Person, DBClient
+from clients.db_client import  Chore, Person, DBClient, TaskSent
 from enums.complexity import Complexity
 from enums.frequency import Frequency
 from logic.assing_by_date import ChoreDistributionService
@@ -132,7 +132,7 @@ class TgBotClient:
             await update.message.reply_text(f"✅ Ты успешно зарегистрирован в системе, @{user.username}!")
 
             logger.info(f"User {user.id} added to database.")
-            
+        
     def _set_job_queue(self, application: Application) -> None:
         """Настраивает автоматические задачи для бота."""
         logger.info("Setting job queue...")
@@ -141,15 +141,42 @@ class TgBotClient:
             return
 
         application.job_queue.run_repeating(
-            callback=self._notify_chores_daily, 
-            interval=timedelta(days=1),
-            first=time(hour=17, minute=54, tzinfo=timezone.utc),
-            name="notify_chores_daily"
+            callback=self._check_and_send_tasks, 
+            interval=timedelta(hours=3),
+            first=time(hour=0, minute=0, tzinfo=timezone.utc),
+            name="check_and_send_tasks"
         )
+        
+        application.job_queue.run_daily(    
+            callback=self._clear_sent_tasks_job,
+            time=time(hour=0, minute=0, tzinfo=timezone.utc),
+            name="clear_sent_tasks"
+        )   
+        
+            
+    async def _check_and_send_tasks(self, context: ContextTypes.DEFAULT_TYPE):
+        logger.info("Checking if the tasks has been sent today")
+
+        session = self.db_client._sessionmaker()
+        last_sent = session.query(TaskSent).order_by(TaskSent.created_at.desc()).first()
+        session.close()
+
+        today = datetime.now(timezone.utc).date()
+
+        if last_sent and last_sent.created_at.date() == today:
+            logger.info("Tasks has been sent today, no need to resend")
+        else:
+            logger.info("Task has not been sent today, start sending tasks.")
+            await self._notify_chores_daily(context)
+
+            session = self.db_client._sessionmaker()
+            session.add(TaskSent(created_at=today))
+            session.commit()
+            session.close()
 
     async def _notify_chores_daily(self, context: ContextTypes.DEFAULT_TYPE):
         """Распределяет и отправляет пользователям их задачи каждый день."""
-        logger.info("Началась автоматическая рассылка задач.")
+        logger.info("Sending today's tasks")
 
         session = self.db_client._sessionmaker()
         persons = session.query(Person).all()
@@ -157,14 +184,14 @@ class TgBotClient:
         session.close()
 
         if not persons or not all_chores:
-            logger.warning("Нет пользователей или задач для распределения.")
+            logger.warning("No users or tasks to send.")
             return
 
         chore_service = ChoreDistributionService()
         today_chores = chore_service.get_chores_due_today(all_chores)
 
         if not today_chores:
-            logger.info("Сегодня нет задач для выполнения.")
+            logger.info("No tasks today.")
             return
 
         tasks_by_person = chore_service.assign_tasks(today_chores, persons)
@@ -177,7 +204,7 @@ class TgBotClient:
                 chat = await context.bot.get_chat(person.tg_user_id)
                 user_display_name = f"@{chat.username}" if chat.username else chat.first_name
             except Exception as e:
-                logger.error(f"Не удалось получить имя пользователя {person.tg_user_id}: {e}")
+                logger.error(f"Couldn't get users name {person.tg_user_id}: {e}")
                 user_display_name = f"ID {person.tg_user_id}" 
 
             if tasks:
@@ -188,9 +215,27 @@ class TgBotClient:
 
             try:
                 await context.bot.send_message(chat_id=person.tg_user_id, text=message)
-                logger.info(f"Задачи отправлены {user_display_name}")
+                logger.info(f"Tasks has been sent {user_display_name}")
             except Exception as e:
-                logger.error(f"Не удалось отправить сообщение {person.tg_user_id}: {e}")
+                logger.error(f"Couldn't send tasks {person.tg_user_id}: {e}")
+            
+    async def _clear_sent_tasks_job(self, context: ContextTypes.DEFAULT_TYPE):
+        logger.info("Clearing table sent_tasks...")
+        self.db_client.clear_sent_tasks()
+
+    def clear_sent_tasks(self) -> None:
+        """Удаляет все записи из таблицы TaskSent."""
+        logger.info("Clearing table sent_tasks...")
+        session = self._sessionmaker()
+        try:
+            session.query(TaskSent).delete()
+            session.commit()
+            logger.info("Table sent_tasks now empty.")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error clearing sent_tasks: {e}")
+        finally:
+            session.close()
 
     def run(self):
         logger.info("Starting bot")
